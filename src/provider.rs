@@ -123,6 +123,41 @@ pub trait Provider: Send + Sync + Clone {
         let _ = dial_code;
         true
     }
+
+    /// Check if the provider supports the given service.
+    ///
+    /// This method allows checking if a specific service (e.g., WhatsApp, Instagram)
+    /// is supported by the provider before attempting to acquire a number.
+    ///
+    /// Default implementation returns true, assuming all services are supported.
+    fn supports_service(&self, service: &Self::Service) -> bool {
+        let _ = service;
+        true
+    }
+
+    /// Get the list of countries where the given service is available.
+    ///
+    /// This method returns a list of ISO country codes where phone numbers
+    /// can be acquired for the specified service.
+    ///
+    /// Default implementation returns an empty list, indicating that
+    /// available countries should be determined through other means
+    /// (e.g., trying to get a number and handling errors).
+    ///
+    /// Providers can override this to provide a static or dynamic list
+    /// of supported countries.
+    fn available_countries(&self, service: &Self::Service) -> Vec<CountryCode> {
+        let _ = service;
+        Vec::new()
+    }
+
+    /// Get the list of all services supported by this provider.
+    ///
+    /// Default implementation returns an empty list. Providers should
+    /// override this to return their supported services.
+    fn supported_services(&self) -> Vec<Self::Service> {
+        Vec::new()
+    }
 }
 
 /// Wrapper that adds automatic retry logic to any Provider.
@@ -263,5 +298,17 @@ where
 
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
         self.inner.is_dial_code_supported(dial_code)
+    }
+
+    fn supports_service(&self, service: &Self::Service) -> bool {
+        self.inner.supports_service(service)
+    }
+
+    fn available_countries(&self, service: &Self::Service) -> Vec<CountryCode> {
+        self.inner.available_countries(service)
+    }
+
+    fn supported_services(&self) -> Vec<Self::Service> {
+        self.inner.supported_services()
     }
 }

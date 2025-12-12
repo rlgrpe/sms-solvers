@@ -48,6 +48,24 @@ impl Service {
             },
         }
     }
+
+    /// Get all predefined services.
+    ///
+    /// This returns all known services except `Other`.
+    pub fn all() -> Vec<Service> {
+        vec![
+            Service::FullRent,
+            Service::InstagramThreads,
+            Service::Whatsapp,
+            Service::Facebook,
+            Service::Vfs,
+        ]
+    }
+
+    /// Check if this is a predefined service (not `Other`).
+    pub fn is_predefined(&self) -> bool {
+        !matches!(self, Service::Other { .. })
+    }
 }
 
 impl FromStr for Service {
@@ -106,5 +124,28 @@ mod tests {
 
         let parsed: Service = serde_json::from_str("\"ig\"").unwrap();
         assert_eq!(parsed, Service::InstagramThreads);
+    }
+
+    #[test]
+    fn test_service_all() {
+        let services = Service::all();
+        assert_eq!(services.len(), 5);
+        assert!(services.contains(&Service::FullRent));
+        assert!(services.contains(&Service::InstagramThreads));
+        assert!(services.contains(&Service::Whatsapp));
+        assert!(services.contains(&Service::Facebook));
+        assert!(services.contains(&Service::Vfs));
+    }
+
+    #[test]
+    fn test_service_is_predefined() {
+        assert!(Service::Whatsapp.is_predefined());
+        assert!(Service::Facebook.is_predefined());
+        assert!(
+            !Service::Other {
+                code: "custom".to_string()
+            }
+            .is_predefined()
+        );
     }
 }

@@ -8,9 +8,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Display};
-use std::fs;
 use std::future::Future;
-use std::path::Path;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -129,6 +127,89 @@ impl Default for SmsServiceConfig {
     }
 }
 
+impl SmsServiceConfig {
+    /// Create a new builder for SmsServiceConfig.
+    pub fn builder() -> SmsServiceConfigBuilder {
+        SmsServiceConfigBuilder::default()
+    }
+
+    /// Create a new config with a custom timeout.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.wait_sms_code_timeout = timeout;
+        self
+    }
+
+    /// Create a new config with a custom poll interval.
+    pub fn with_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+}
+
+/// Builder for SmsServiceConfig.
+///
+/// Provides a fluent API for configuring the SMS service.
+///
+/// # Example
+///
+/// ```rust
+/// use sms_solvers::SmsServiceConfig;
+/// use std::time::Duration;
+///
+/// let config = SmsServiceConfig::builder()
+///     .timeout(Duration::from_secs(180))
+///     .poll_interval(Duration::from_secs(5))
+///     .build();
+///
+/// assert_eq!(config.wait_sms_code_timeout, Duration::from_secs(180));
+/// assert_eq!(config.poll_interval, Duration::from_secs(5));
+/// ```
+#[derive(Debug, Clone)]
+pub struct SmsServiceConfigBuilder {
+    timeout: Duration,
+    poll_interval: Duration,
+}
+
+impl Default for SmsServiceConfigBuilder {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(120),
+            poll_interval: Duration::from_secs(3),
+        }
+    }
+}
+
+impl SmsServiceConfigBuilder {
+    /// Create a new builder with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the timeout for waiting for SMS codes.
+    ///
+    /// Default: 120 seconds
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Set the polling interval when waiting for SMS codes.
+    ///
+    /// Default: 3 seconds
+    pub fn poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    /// Build the SmsServiceConfig.
+    pub fn build(self) -> SmsServiceConfig {
+        SmsServiceConfig {
+            wait_sms_code_timeout: self.timeout,
+            poll_interval: self.poll_interval,
+        }
+    }
+}
+
 /// Generic SMS service that works with any Provider implementation.
 ///
 /// This service handles high-level SMS operations like:
@@ -187,14 +268,99 @@ where
         Self::new(provider, SmsServiceConfig::default())
     }
 
+    /// Create a new builder for SmsService.
+    pub fn builder(provider: P) -> SmsServiceBuilder<P> {
+        SmsServiceBuilder::new(provider)
+    }
+
     /// Get reference to the underlying provider.
     pub fn provider(&self) -> &P {
         &self.provider
     }
 
+    /// Get mutable reference to the underlying provider.
+    pub fn provider_mut(&mut self) -> &mut P {
+        &mut self.provider
+    }
+
     /// Get reference to the service configuration.
     pub fn config(&self) -> &SmsServiceConfig {
         &self.config
+    }
+
+    /// Get mutable reference to the service configuration.
+    pub fn config_mut(&mut self) -> &mut SmsServiceConfig {
+        &mut self.config
+    }
+
+    /// Update the service configuration.
+    pub fn set_config(&mut self, config: SmsServiceConfig) {
+        self.config = config;
+    }
+}
+
+/// Builder for SmsService.
+///
+/// Provides a fluent API for constructing an SMS service with a provider
+/// and custom configuration.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use sms_solvers::{SmsService, Provider};
+/// use std::time::Duration;
+///
+/// let service = SmsService::builder(provider)
+///     .timeout(Duration::from_secs(180))
+///     .poll_interval(Duration::from_secs(5))
+///     .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct SmsServiceBuilder<P: Provider> {
+    provider: P,
+    config_builder: SmsServiceConfigBuilder,
+}
+
+impl<P: Provider> SmsServiceBuilder<P>
+where
+    P::Error: Debug + Display + RetryableError,
+{
+    /// Create a new builder with the given provider.
+    pub fn new(provider: P) -> Self {
+        Self {
+            provider,
+            config_builder: SmsServiceConfigBuilder::default(),
+        }
+    }
+
+    /// Set the timeout for waiting for SMS codes.
+    ///
+    /// Default: 120 seconds
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.config_builder = self.config_builder.timeout(timeout);
+        self
+    }
+
+    /// Set the polling interval when waiting for SMS codes.
+    ///
+    /// Default: 3 seconds
+    pub fn poll_interval(mut self, interval: Duration) -> Self {
+        self.config_builder = self.config_builder.poll_interval(interval);
+        self
+    }
+
+    /// Set the full configuration.
+    pub fn config(mut self, config: SmsServiceConfig) -> Self {
+        self.config_builder = SmsServiceConfigBuilder {
+            timeout: config.wait_sms_code_timeout,
+            poll_interval: config.poll_interval,
+        };
+        self
+    }
+
+    /// Build the SmsService.
+    pub fn build(self) -> SmsService<P> {
+        SmsService::new(self.provider, self.config_builder.build())
     }
 }
 
@@ -369,17 +535,14 @@ struct CountryDialCodeEntry {
     dial_code: String,
 }
 
-/// Load and parse the dial codes JSON file.
-static DIAL_CODES_JSON: Lazy<String> = Lazy::new(|| {
-    let path = Path::new("assets/countries_with_dial_code.json");
-    fs::read_to_string(path).expect("failed to read countries_with_dial_code.json")
-});
+/// Dial codes JSON embedded at compile time.
+static DIAL_CODES_JSON: &str = include_str!("../assets/countries_with_dial_code.json");
 
 /// Mapping from ISO alpha-2 code to dial code string.
 /// Built from the countries_with_dial_code.json file at startup.
 static ALPHA2_TO_DIAL_CODE: Lazy<HashMap<String, String>> = Lazy::new(|| {
     let entries: Vec<CountryDialCodeEntry> =
-        serde_json::from_str(&DIAL_CODES_JSON).expect("countries_with_dial_code.json is invalid");
+        serde_json::from_str(DIAL_CODES_JSON).expect("countries_with_dial_code.json is invalid");
 
     let mut map = HashMap::with_capacity(entries.len());
     for entry in entries {
@@ -427,5 +590,33 @@ mod tests {
         let config = SmsServiceConfig::default();
         assert_eq!(config.wait_sms_code_timeout, Duration::from_secs(120));
         assert_eq!(config.poll_interval, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_config_builder() {
+        let config = SmsServiceConfig::builder()
+            .timeout(Duration::from_secs(180))
+            .poll_interval(Duration::from_secs(5))
+            .build();
+
+        assert_eq!(config.wait_sms_code_timeout, Duration::from_secs(180));
+        assert_eq!(config.poll_interval, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_config_builder_default() {
+        let config = SmsServiceConfigBuilder::new().build();
+        assert_eq!(config.wait_sms_code_timeout, Duration::from_secs(120));
+        assert_eq!(config.poll_interval, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_config_with_methods() {
+        let config = SmsServiceConfig::default()
+            .with_timeout(Duration::from_secs(60))
+            .with_poll_interval(Duration::from_secs(1));
+
+        assert_eq!(config.wait_sms_code_timeout, Duration::from_secs(60));
+        assert_eq!(config.poll_interval, Duration::from_secs(1));
     }
 }

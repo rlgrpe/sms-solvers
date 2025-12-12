@@ -1,6 +1,7 @@
 //! SMS Activate provider implementation.
 
 use super::client::SmsActivateClient;
+use super::countries::CC2SMS_ID;
 use super::errors::{Result, SmsActivateError};
 use super::services::Service;
 use super::types::ActivationStatus;
@@ -156,6 +157,20 @@ impl Provider for SmsActivateProvider {
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
         !self.blacklisted_dial_codes.contains(dial_code.as_str())
     }
+
+    fn supports_service(&self, _service: &Self::Service) -> bool {
+        // SMS Activate supports all services including custom ones
+        true
+    }
+
+    fn available_countries(&self, _service: &Self::Service) -> Vec<CountryCode> {
+        // Return all countries that have SMS Activate mapping
+        CC2SMS_ID.keys().copied().collect()
+    }
+
+    fn supported_services(&self) -> Vec<Self::Service> {
+        Service::all()
+    }
 }
 
 #[cfg(test)]
@@ -273,5 +288,40 @@ mod tests {
 
         provider.remove_from_blacklist("33");
         assert!(provider.is_dial_code_supported(&dial_code));
+    }
+
+    #[test]
+    fn test_supports_service() {
+        let client = SmsActivateClient::with_api_key("test_key").unwrap();
+        let provider = SmsActivateProvider::new(client);
+
+        assert!(provider.supports_service(&Service::Whatsapp));
+        assert!(provider.supports_service(&Service::InstagramThreads));
+        assert!(provider.supports_service(&Service::Other {
+            code: "custom".to_string()
+        }));
+    }
+
+    #[test]
+    fn test_available_countries() {
+        let client = SmsActivateClient::with_api_key("test_key").unwrap();
+        let provider = SmsActivateProvider::new(client);
+
+        let countries = provider.available_countries(&Service::Whatsapp);
+        assert!(!countries.is_empty());
+        assert!(countries.contains(&CountryCode::USA));
+        assert!(countries.contains(&CountryCode::UKR));
+    }
+
+    #[test]
+    fn test_supported_services() {
+        let client = SmsActivateClient::with_api_key("test_key").unwrap();
+        let provider = SmsActivateProvider::new(client);
+
+        let services = provider.supported_services();
+        assert!(!services.is_empty());
+        assert!(services.contains(&Service::Whatsapp));
+        assert!(services.contains(&Service::InstagramThreads));
+        assert!(services.contains(&Service::Facebook));
     }
 }

@@ -78,5 +78,8 @@ pub mod types;
 pub use errors::RetryableError;
 pub use provider::{Provider, RetryableProvider};
 pub use retry::RetryConfig;
-pub use service::{ServiceError, SmsService, SmsServiceConfig, SmsServiceTrait};
+pub use service::{
+    ServiceError, SmsService, SmsServiceBuilder, SmsServiceConfig, SmsServiceConfigBuilder,
+    SmsServiceTrait,
+};
 pub use types::{DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId};

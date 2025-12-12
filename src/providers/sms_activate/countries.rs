@@ -4,13 +4,10 @@ use isocountry::CountryCode;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 use thiserror::Error;
 
 /// Error when mapping country codes.
 #[derive(Debug, Clone, Error)]
-#[allow(dead_code)]
 pub enum CountryMapError {
     /// Unknown SMS-Activate ID.
     #[error("Unknown ISO country for SMS-Activate id {id}")]
@@ -20,11 +17,8 @@ pub enum CountryMapError {
     NoSmsMapping { code: CountryCode },
 }
 
-/// Load and parse the SMS Activate countries JSON file.
-static COUNTRIES_JSON: Lazy<String> = Lazy::new(|| {
-    let path = Path::new("assets/sms_activate_countries.json");
-    fs::read_to_string(path).expect("failed to read sms_activate_countries.json")
-});
+/// SMS Activate countries JSON embedded at compile time.
+static COUNTRIES_JSON: &str = include_str!("../../../assets/sms_activate_countries.json");
 
 /// Name normalization for stable comparison.
 /// Converts to lowercase and removes punctuation/extra whitespace.
@@ -101,7 +95,7 @@ static ISO_NAME2CC: Lazy<HashMap<String, CountryCode>> = Lazy::new(|| {
 /// Built from sms_activate_countries.json at startup.
 pub static SMS_ID2CC: Lazy<HashMap<u16, CountryCode>> = Lazy::new(|| {
     let raw: HashMap<String, Value> =
-        serde_json::from_str(&COUNTRIES_JSON).expect("sms_activate_countries.json is invalid");
+        serde_json::from_str(COUNTRIES_JSON).expect("sms_activate_countries.json is invalid");
 
     let mut map = HashMap::with_capacity(raw.len());
 
@@ -347,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_countries_json_valid() {
-        let result: Result<HashMap<String, Value>, _> = serde_json::from_str(&*COUNTRIES_JSON);
+        let result: Result<HashMap<String, Value>, _> = serde_json::from_str(COUNTRIES_JSON);
         assert!(
             result.is_ok(),
             "sms_activate_countries.json should be valid JSON"
