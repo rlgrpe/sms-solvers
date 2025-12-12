@@ -123,10 +123,10 @@ impl Provider for SmsActivateProvider {
     async fn get_sms_code(&self, task_id: &TaskId) -> Result<Option<SmsCode>> {
         let response = self.client.get_sms_code(task_id).await?;
 
-        if let Some(sms) = &response.sms {
-            if !sms.code.is_empty() {
-                return Ok(Some(SmsCode::new(&sms.code)));
-            }
+        if let Some(sms) = &response.sms
+            && !sms.code.is_empty()
+        {
+            return Ok(Some(SmsCode::new(&sms.code)));
         }
 
         Ok(None)

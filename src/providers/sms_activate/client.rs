@@ -241,12 +241,12 @@ impl SmsActivateClient {
         let data = response.into_result().map_err(SmsActivateError::Service)?;
 
         #[cfg(feature = "tracing")]
-        if let Some(sms) = &data.sms {
-            if !sms.code.is_empty() {
-                Span::current()
-                    .record("sms_code", sms.code.as_str())
-                    .set_status(Status::Ok);
-            }
+        if let Some(sms) = &data.sms
+            && !sms.code.is_empty()
+        {
+            Span::current()
+                .record("sms_code", sms.code.as_str())
+                .set_status(Status::Ok);
         }
 
         Ok(data)
