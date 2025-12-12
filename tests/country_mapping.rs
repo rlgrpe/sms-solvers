@@ -59,12 +59,10 @@ fn test_country_sms_id_round_trip() {
     for original in test_countries {
         let sms_id = original
             .sms_id()
-            .expect(&format!("Failed to get SMS ID for {}", original.name()));
+            .unwrap_or_else(|_| panic!("Failed to get SMS ID for {}", original.name()));
 
-        let converted = CountryCode::from_sms_id(sms_id).expect(&format!(
-            "Failed to convert SMS ID {} back to CountryCode",
-            sms_id
-        ));
+        let converted = CountryCode::from_sms_id(sms_id)
+            .unwrap_or_else(|_| panic!("Failed to convert SMS ID {} back to CountryCode", sms_id));
 
         assert_eq!(
             original,

@@ -271,10 +271,9 @@ mod tests {
     #[test]
     fn test_round_trip_conversion() {
         for (original_cc, sms_id) in CC2SMS_ID.iter() {
-            let converted_cc = CountryCode::from_sms_id(*sms_id).expect(&format!(
-                "Failed to convert SMS ID {} back to CountryCode",
-                sms_id
-            ));
+            let converted_cc = CountryCode::from_sms_id(*sms_id).unwrap_or_else(|_| {
+                panic!("Failed to convert SMS ID {} back to CountryCode", sms_id)
+            });
             assert_eq!(
                 *original_cc, converted_cc,
                 "Round-trip failed for {:?} (SMS ID: {})",
@@ -288,7 +287,7 @@ mod tests {
         for (original_id, cc) in SMS_ID2CC.iter() {
             let converted_id = cc
                 .sms_id()
-                .expect(&format!("Failed to get SMS ID for {:?}", cc));
+                .unwrap_or_else(|_| panic!("Failed to get SMS ID for {:?}", cc));
             assert_eq!(
                 *original_id, converted_id,
                 "Reverse round-trip failed for SMS ID {} ({:?})",

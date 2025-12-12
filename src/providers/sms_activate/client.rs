@@ -323,7 +323,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(&mock_server.uri(), "test_key").unwrap();
+        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .get_phone_number(CountryCode::UKR, Service::InstagramThreads)
             .await;
@@ -345,7 +345,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(&mock_server.uri(), "test_key").unwrap();
+        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .get_phone_number(CountryCode::UKR, Service::Whatsapp)
             .await;
@@ -377,7 +377,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(&mock_server.uri(), "test_key").unwrap();
+        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client.get_sms_code(&TaskId::from("123456789")).await;
 
         assert!(result.is_ok());
@@ -397,7 +397,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(&mock_server.uri(), "test_key").unwrap();
+        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .set_activation_status(
                 &TaskId::from("123456789"),

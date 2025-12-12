@@ -180,7 +180,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn create_test_provider(mock_server: &MockServer) -> SmsActivateProvider {
-        let client = SmsActivateClient::new(&mock_server.uri(), "test_key").unwrap();
+        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         SmsActivateProvider::new(client)
     }
 
