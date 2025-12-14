@@ -9,12 +9,13 @@ keywords = ["sms", "verification", "otp", "sms-activate"]
 categories = ["api-bindings", "authentication"]
 
 [features]
-default = ["sms-activate", "tracing"]
+default = ["sms-activate", "tracing", "random"]
 sms-activate = []
 # Enable tracing instrumentation with OpenTelemetry support
 tracing = ["dep:tracing", "dep:tracing-opentelemetry", "dep:opentelemetry"]
 # Enable OpenTelemetry metrics support
 metrics = ["dep:opentelemetry"]
+random = ["dep:rand"]
 
 [dependencies]
 # Core
@@ -45,6 +46,9 @@ once_cell = "1.20"
 tracing = { version = "0.1", optional = true }
 tracing-opentelemetry = { version = "0.31", optional = true }
 opentelemetry = { version = "0.30", features = ["trace", "metrics"], optional = true }
+
+# optional
+rand = { version = "0.8.5", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.44", features = ["full", "macros"] }

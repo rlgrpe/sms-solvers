@@ -1,6 +1,7 @@
 //! Core types for SMS verification operations.
 
 use isocountry::CountryCode;
+use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -335,6 +336,15 @@ impl Number {
             .ok_or(NumberError::MissingDialCode)?;
 
         Self::new(number_part)
+    }
+
+    /// Generate a random valid Number.
+    #[cfg(feature = "random")]
+    pub fn generate() -> Result<Self, NumberError> {
+        let mut rng = rand::thread_rng();
+        let first: u64 = rng.gen_range(1..10);
+        let rest: u64 = rng.gen_range(0..1_000_000_000);
+        Number::new(format!("{first}{rest:09}"))
     }
 
     /// Get the number as a string slice.
