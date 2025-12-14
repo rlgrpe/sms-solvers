@@ -96,6 +96,9 @@ pub use utils::RetryConfig;
 // Re-export isocountry so users don't need to add it as a separate dependency
 pub use isocountry::CountryCode;
 
+// Re-export country to dial code utility
+pub use utils::dial_code::country_to_dial_code;
+
 /// SMS Activate provider types.
 ///
 /// This module provides integration with the SMS Activate service
