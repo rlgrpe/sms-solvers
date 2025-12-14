@@ -45,6 +45,7 @@ fn is_no_numbers_error(err: &SmsActivateError) -> bool {
 
 /// Helper to check if error is authentication related.
 fn is_auth_error(err: &SmsActivateError) -> bool {
+    use sms_solvers::sms_activate::SmsActivateError as E;
     matches!(err, E::Service(e) if e.code.code_name() == "BAD_KEY" || e.code.code_name() == "BAD_ACTION")
 }
 

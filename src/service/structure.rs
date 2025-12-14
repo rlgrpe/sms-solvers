@@ -11,9 +11,78 @@ use isocountry::CountryCode;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Display};
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tracing")]
 use tracing::{debug, error, info, warn};
+
+#[cfg(feature = "metrics")]
+use opentelemetry::{
+    KeyValue, global,
+    metrics::{Counter, Histogram},
+};
+
+#[cfg(feature = "metrics")]
+use std::sync::OnceLock;
+
+/// Metrics for the SMS Solver service.
+#[cfg(feature = "metrics")]
+struct ServiceMetrics {
+    /// Counter for number requests.
+    numbers_requested: Counter<u64>,
+    /// Counter for successful SMS codes received.
+    sms_codes_received: Counter<u64>,
+    /// Counter for timeouts.
+    timeouts: Counter<u64>,
+    /// Counter for cancellations.
+    cancellations: Counter<u64>,
+    /// Counter for errors.
+    errors: Counter<u64>,
+    /// Histogram for SMS wait times in seconds.
+    sms_wait_time: Histogram<f64>,
+    /// Histogram for poll counts.
+    poll_counts: Histogram<u64>,
+}
+
+#[cfg(feature = "metrics")]
+impl ServiceMetrics {
+    fn global() -> &'static Self {
+        static METRICS: OnceLock<ServiceMetrics> = OnceLock::new();
+        METRICS.get_or_init(|| {
+            let meter = global::meter("sms_solvers");
+            Self {
+                numbers_requested: meter
+                    .u64_counter("sms_solvers.numbers_requested")
+                    .with_description("Number of phone number requests")
+                    .build(),
+                sms_codes_received: meter
+                    .u64_counter("sms_solvers.sms_codes_received")
+                    .with_description("Number of SMS codes successfully received")
+                    .build(),
+                timeouts: meter
+                    .u64_counter("sms_solvers.timeouts")
+                    .with_description("Number of SMS wait timeouts")
+                    .build(),
+                cancellations: meter
+                    .u64_counter("sms_solvers.cancellations")
+                    .with_description("Number of cancelled operations")
+                    .build(),
+                errors: meter
+                    .u64_counter("sms_solvers.errors")
+                    .with_description("Number of errors")
+                    .build(),
+                sms_wait_time: meter
+                    .f64_histogram("sms_solvers.sms_wait_time_seconds")
+                    .with_description("Time spent waiting for SMS codes")
+                    .build(),
+                poll_counts: meter
+                    .u64_histogram("sms_solvers.poll_counts")
+                    .with_description("Number of polls before receiving SMS")
+                    .build(),
+            }
+        })
+    }
+}
 
 /// Generic SMS service that works with any Provider implementation.
 ///
@@ -124,11 +193,24 @@ where
         #[cfg(feature = "tracing")]
         debug!("Requesting phone number");
 
+        #[cfg(feature = "metrics")]
+        ServiceMetrics::global()
+            .numbers_requested
+            .add(1, &[KeyValue::new("country", country.alpha2().to_string())]);
+
         let (task_id, full_number) = self
             .provider
             .get_phone_number(country, service)
             .await
             .map_err(|e| {
+                #[cfg(feature = "metrics")]
+                ServiceMetrics::global().errors.add(
+                    1,
+                    &[
+                        KeyValue::new("country", country.alpha2().to_string()),
+                        KeyValue::new("operation", "get_number"),
+                    ],
+                );
                 let is_retryable = e.is_retryable();
                 let should_retry_operation = e.should_retry_operation();
                 SmsSolverServiceError::Provider {
@@ -178,40 +260,141 @@ where
         )
     )]
     async fn wait_for_sms_code(&self, task_id: &TaskId) -> Result<SmsCode, Self::Error> {
+        self.wait_for_sms_code_cancellable(task_id, CancellationToken::new())
+            .await
+    }
+
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "sms_solver.wait_for_code_cancellable",
+            skip_all,
+            fields(task_id = %task_id)
+        )
+    )]
+    async fn wait_for_sms_code_cancellable(
+        &self,
+        task_id: &TaskId,
+        cancel_token: CancellationToken,
+    ) -> Result<SmsCode, Self::Error> {
         let timeout = self.config.timeout;
         let poll_interval = self.config.poll_interval;
         let start = Instant::now();
+        let mut poll_count: u32 = 0;
 
         #[cfg(feature = "tracing")]
         debug!(timeout_secs = %timeout.as_secs_f64(), "Starting SMS code polling");
 
         loop {
-            if start.elapsed() >= timeout {
+            // Check for cancellation
+            if cancel_token.is_cancelled() {
+                let elapsed = start.elapsed();
+
                 #[cfg(feature = "tracing")]
-                warn!(
-                    timeout_secs = %timeout.as_secs_f64(),
-                    "Timeout reached, cancelling activation"
+                info!(
+                    elapsed_secs = %elapsed.as_secs_f64(),
+                    poll_count = %poll_count,
+                    "Cancellation requested, cancelling activation"
                 );
 
-                if let Err(_e) = self.provider.cancel_activation(task_id).await {
-                    #[cfg(feature = "tracing")]
-                    warn!(error = %_e, "Failed to cancel activation after timeout");
+                #[cfg(feature = "metrics")]
+                {
+                    ServiceMetrics::global().cancellations.add(1, &[]);
+                    ServiceMetrics::global().sms_wait_time.record(
+                        elapsed.as_secs_f64(),
+                        &[KeyValue::new("outcome", "cancelled")],
+                    );
+                    ServiceMetrics::global()
+                        .poll_counts
+                        .record(poll_count as u64, &[KeyValue::new("outcome", "cancelled")]);
                 }
 
-                return Err(SmsSolverServiceError::SmsTimeout {
-                    timeout,
+                // Try to cancel the activation
+                if let Err(e) = self.provider.cancel_activation(task_id).await {
+                    #[cfg(feature = "tracing")]
+                    warn!(error = %e, "Failed to cancel activation after cancellation request");
+
+                    return Err(SmsSolverServiceError::CancelFailed {
+                        task_id: task_id.clone(),
+                        message: e.to_string(),
+                    });
+                }
+
+                return Err(SmsSolverServiceError::Cancelled {
+                    elapsed,
+                    poll_count,
                     task_id: task_id.clone(),
                 });
             }
 
+            // Check for timeout
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                #[cfg(feature = "tracing")]
+                warn!(
+                    timeout_secs = %timeout.as_secs_f64(),
+                    elapsed_secs = %elapsed.as_secs_f64(),
+                    poll_count = %poll_count,
+                    "Timeout reached, cancelling activation"
+                );
+
+                #[cfg(feature = "metrics")]
+                {
+                    ServiceMetrics::global().timeouts.add(1, &[]);
+                    ServiceMetrics::global().sms_wait_time.record(
+                        elapsed.as_secs_f64(),
+                        &[KeyValue::new("outcome", "timeout")],
+                    );
+                    ServiceMetrics::global()
+                        .poll_counts
+                        .record(poll_count as u64, &[KeyValue::new("outcome", "timeout")]);
+                }
+
+                // Try to cancel the activation
+                if let Err(e) = self.provider.cancel_activation(task_id).await {
+                    #[cfg(feature = "tracing")]
+                    warn!(error = %e, "Failed to cancel activation after timeout");
+
+                    return Err(SmsSolverServiceError::CancelFailed {
+                        task_id: task_id.clone(),
+                        message: e.to_string(),
+                    });
+                }
+
+                return Err(SmsSolverServiceError::SmsTimeout {
+                    timeout,
+                    elapsed,
+                    poll_count,
+                    task_id: task_id.clone(),
+                });
+            }
+
+            poll_count += 1;
+
             match self.provider.get_sms_code(task_id).await {
                 Ok(Some(code)) => {
+                    let elapsed = start.elapsed();
+
                     #[cfg(feature = "tracing")]
                     info!(
                         code = %code,
-                        elapsed_secs = %start.elapsed().as_secs_f64(),
+                        elapsed_secs = %elapsed.as_secs_f64(),
+                        poll_count = %poll_count,
                         "SMS code received"
                     );
+
+                    #[cfg(feature = "metrics")]
+                    {
+                        ServiceMetrics::global().sms_codes_received.add(1, &[]);
+                        ServiceMetrics::global().sms_wait_time.record(
+                            elapsed.as_secs_f64(),
+                            &[KeyValue::new("outcome", "success")],
+                        );
+                        ServiceMetrics::global()
+                            .poll_counts
+                            .record(poll_count as u64, &[KeyValue::new("outcome", "success")]);
+                    }
+
                     return Ok(code);
                 }
                 Ok(None) => {
@@ -219,13 +402,38 @@ where
                 }
                 Err(e) if !e.is_retryable() => {
                     let should_retry_operation = e.should_retry_operation();
+                    let elapsed = start.elapsed();
 
                     #[cfg(feature = "tracing")]
-                    error!(error = %e, "Permanent error during polling");
+                    error!(
+                        error = %e,
+                        elapsed_secs = %elapsed.as_secs_f64(),
+                        poll_count = %poll_count,
+                        "Permanent error during polling"
+                    );
 
-                    if let Err(_cancel_err) = self.provider.cancel_activation(task_id).await {
+                    #[cfg(feature = "metrics")]
+                    {
+                        ServiceMetrics::global()
+                            .errors
+                            .add(1, &[KeyValue::new("operation", "wait_for_sms_code")]);
+                        ServiceMetrics::global()
+                            .sms_wait_time
+                            .record(elapsed.as_secs_f64(), &[KeyValue::new("outcome", "error")]);
+                        ServiceMetrics::global()
+                            .poll_counts
+                            .record(poll_count as u64, &[KeyValue::new("outcome", "error")]);
+                    }
+
+                    // Try to cancel the activation
+                    if let Err(cancel_err) = self.provider.cancel_activation(task_id).await {
                         #[cfg(feature = "tracing")]
-                        warn!(error = %_cancel_err, "Failed to cancel activation after error");
+                        warn!(error = %cancel_err, "Failed to cancel activation after error");
+
+                        return Err(SmsSolverServiceError::CancelFailed {
+                            task_id: task_id.clone(),
+                            message: cancel_err.to_string(),
+                        });
                     }
 
                     return Err(SmsSolverServiceError::Provider {
@@ -236,7 +444,7 @@ where
                 }
                 Err(_e) => {
                     #[cfg(feature = "tracing")]
-                    warn!(error = %_e, "Transient error during polling, continuing");
+                    warn!(error = %_e, poll_count = %poll_count, "Transient error during polling, continuing");
                 }
             }
 

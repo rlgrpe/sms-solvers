@@ -4,6 +4,7 @@ use crate::errors::RetryableError;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
 use isocountry::CountryCode;
 use std::error::Error as StdError;
+use std::future::Future;
 
 /// Core trait that all SMS providers must implement.
 ///
@@ -17,6 +18,11 @@ use std::error::Error as StdError;
 ///
 /// - `Error`: The error type for this provider
 /// - `Service`: The service type for phone number requests (e.g., WhatsApp, Instagram)
+///
+/// # Note on async methods
+///
+/// All async methods in this trait return `Send` futures, making them
+/// compatible with multi-threaded executors.
 ///
 /// # Example
 ///
@@ -51,6 +57,7 @@ use std::error::Error as StdError;
 ///     }
 /// }
 /// ```
+#[allow(async_fn_in_trait)]
 pub trait Provider: Send + Sync + Clone {
     /// Error type returned by provider operations.
     type Error: StdError + RetryableError + Send + Sync + 'static;
@@ -68,11 +75,11 @@ pub trait Provider: Send + Sync + Clone {
     /// # Returns
     /// * `task_id` - Unique identifier for this activation
     /// * `full_number` - The full phone number with country code
-    async fn get_phone_number(
+    fn get_phone_number(
         &self,
         country: CountryCode,
         service: Self::Service,
-    ) -> Result<(TaskId, FullNumber), Self::Error>;
+    ) -> impl Future<Output = Result<(TaskId, FullNumber), Self::Error>> + Send;
 
     /// Check if SMS code has been received for the given task.
     ///
@@ -82,12 +89,18 @@ pub trait Provider: Send + Sync + Clone {
     /// # Returns
     /// * `Some(SmsCode)` - SMS code if received
     /// * `None` - SMS not yet received, caller should poll again
-    async fn get_sms_code(&self, task_id: &TaskId) -> Result<Option<SmsCode>, Self::Error>;
+    fn get_sms_code(
+        &self,
+        task_id: &TaskId,
+    ) -> impl Future<Output = Result<Option<SmsCode>, Self::Error>> + Send;
 
     /// Mark the activation as successfully completed.
     ///
     /// Call this after successfully using the SMS code.
-    async fn finish_activation(&self, task_id: &TaskId) -> Result<(), Self::Error>;
+    fn finish_activation(
+        &self,
+        task_id: &TaskId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Cancel the activation.
     ///
@@ -95,7 +108,10 @@ pub trait Provider: Send + Sync + Clone {
     /// - SMS timeout occurs
     /// - Permanent error during polling
     /// - No longer need the number
-    async fn cancel_activation(&self, task_id: &TaskId) -> Result<(), Self::Error>;
+    fn cancel_activation(
+        &self,
+        task_id: &TaskId,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Check if the provider supports the given dial code.
     ///

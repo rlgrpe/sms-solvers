@@ -41,18 +41,51 @@ pub enum SmsSolverServiceError {
 
     /// Timeout waiting for SMS code.
     #[error(
-        "Timeout waiting for SMS code after {:.1}s; Task id: {task_id}",
-        timeout.as_secs_f64()
+        "Timeout waiting for SMS code after {:.1}s (polled {} times); Task id: {task_id}",
+        elapsed.as_secs_f64(),
+        poll_count
     )]
-    SmsTimeout { timeout: Duration, task_id: TaskId },
+    SmsTimeout {
+        /// Configured timeout duration.
+        timeout: Duration,
+        /// Actual elapsed time.
+        elapsed: Duration,
+        /// Number of poll attempts made.
+        poll_count: u32,
+        /// The task ID that timed out.
+        task_id: TaskId,
+    },
+
+    /// Cancellation was requested.
+    #[error("Operation cancelled after {:.1}s (polled {} times); Task id: {task_id}", elapsed.as_secs_f64(), poll_count
+    )]
+    Cancelled {
+        /// Elapsed time before cancellation.
+        elapsed: Duration,
+        /// Number of poll attempts made.
+        poll_count: u32,
+        /// The task ID that was cancelled.
+        task_id: TaskId,
+    },
+
+    /// Failed to cancel activation after error/timeout.
+    #[error("Failed to cancel activation for task {task_id}: {message}")]
+    CancelFailed {
+        /// The task ID that failed to cancel.
+        task_id: TaskId,
+        /// Error message from the cancellation attempt.
+        message: String,
+    },
 }
 
 impl RetryableError for SmsSolverServiceError {
     fn is_retryable(&self) -> bool {
         match self {
             SmsSolverServiceError::Provider { is_retryable, .. } => *is_retryable,
-            SmsSolverServiceError::SmsTimeout { .. } => false,
-            SmsSolverServiceError::NoNumbersAvailable { .. }
+            SmsSolverServiceError::SmsTimeout { .. }
+            | SmsSolverServiceError::Cancelled { .. }
+            | SmsSolverServiceError::CancelFailed { .. }
+            | SmsSolverServiceError::NoNumbersAvailable { .. }
             | SmsSolverServiceError::InvalidDialCode { .. }
             | SmsSolverServiceError::NumberParse { .. } => false,
         }
@@ -66,6 +99,8 @@ impl RetryableError for SmsSolverServiceError {
             } => *should_retry_operation,
             SmsSolverServiceError::SmsTimeout { .. } => true,
             SmsSolverServiceError::NoNumbersAvailable { .. } => true,
+            SmsSolverServiceError::Cancelled { .. } => false,
+            SmsSolverServiceError::CancelFailed { .. } => false,
             SmsSolverServiceError::InvalidDialCode { .. }
             | SmsSolverServiceError::NumberParse { .. } => false,
         }

@@ -80,9 +80,12 @@ pub use providers::{Provider, SmsRetryableProvider};
 
 // Re-export service types
 pub use service::{
-    SmsSolverService, SmsSolverServiceBuilder, SmsSolverServiceConfig,
+    ConfigError, SmsSolverService, SmsSolverServiceBuilder, SmsSolverServiceConfig,
     SmsSolverServiceConfigBuilder, SmsSolverServiceError, SmsSolverServiceTrait,
 };
+
+// Re-export CancellationToken for cancellable operations
+pub use tokio_util::sync::CancellationToken;
 
 // Re-export core types
 pub use types::{DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId};

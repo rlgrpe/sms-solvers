@@ -115,6 +115,43 @@ impl FullNumber {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Get the number with a '+' prefix.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sms_solvers::FullNumber;
+    ///
+    /// let num = FullNumber::new("905488242474");
+    /// assert_eq!(num.with_plus_prefix(), "+905488242474");
+    /// ```
+    pub fn with_plus_prefix(&self) -> String {
+        if self.0.starts_with('+') {
+            self.0.clone()
+        } else {
+            format!("+{}", self.0)
+        }
+    }
+
+    /// Check if the number starts with the given dial code.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sms_solvers::{FullNumber, DialCode};
+    ///
+    /// let num = FullNumber::new("905488242474");
+    /// let dc_tr = DialCode::new("90").unwrap();
+    /// let dc_us = DialCode::new("1").unwrap();
+    ///
+    /// assert!(num.starts_with_dial_code(&dc_tr));
+    /// assert!(!num.starts_with_dial_code(&dc_us));
+    /// ```
+    pub fn starts_with_dial_code(&self, dial_code: &DialCode) -> bool {
+        let normalized = self.0.trim_start_matches('+');
+        normalized.starts_with(dial_code.as_str())
+    }
 }
 
 impl Display for FullNumber {
@@ -368,6 +405,30 @@ mod tests {
         let num = FullNumber::new("905488242474");
         assert_eq!(num.as_str(), "905488242474");
         assert_eq!(num.to_string(), "905488242474");
+    }
+
+    #[test]
+    fn test_full_number_with_plus_prefix() {
+        let num = FullNumber::new("905488242474");
+        assert_eq!(num.with_plus_prefix(), "+905488242474");
+
+        // Already has plus prefix
+        let num_with_plus = FullNumber::new("+905488242474");
+        assert_eq!(num_with_plus.with_plus_prefix(), "+905488242474");
+    }
+
+    #[test]
+    fn test_full_number_starts_with_dial_code() {
+        let num = FullNumber::new("905488242474");
+        let dc_tr = DialCode::new("90").unwrap();
+        let dc_us = DialCode::new("1").unwrap();
+
+        assert!(num.starts_with_dial_code(&dc_tr));
+        assert!(!num.starts_with_dial_code(&dc_us));
+
+        // With plus prefix
+        let num_with_plus = FullNumber::new("+905488242474");
+        assert!(num_with_plus.starts_with_dial_code(&dc_tr));
     }
 
     // DialCode tests
