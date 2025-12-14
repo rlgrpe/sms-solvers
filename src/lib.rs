@@ -16,9 +16,9 @@
 //!
 //! ```rust,ignore
 //! use sms_solvers::{
-//!     SmsService, SmsServiceConfig, SmsServiceTrait,
-//!     providers::sms_activate::SmsActivateProvider,
-//!     RetryableProvider, RetryConfig,
+//!     SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
+//!     sms_activate::{SmsActivateProvider, Service},
+//!     SmsRetryableProvider, RetryConfig,
 //! };
 //! use std::time::Duration;
 //! use isocountry::CountryCode;
@@ -29,17 +29,16 @@
 //!     let provider = SmsActivateProvider::new("your_api_key")?;
 //!
 //!     // Wrap with retry logic
-//!     let retryable = RetryableProvider::new(provider);
+//!     let retryable = SmsRetryableProvider::new(provider);
 //!
 //!     // Create service
-//!     let config = SmsServiceConfig {
-//!         wait_sms_code_timeout: Duration::from_secs(120),
-//!         poll_interval: Duration::from_secs(3),
-//!     };
-//!     let service = SmsService::new(retryable, config);
+//!     let service = SmsSolverService::builder(retryable)
+//!         .timeout(Duration::from_secs(120))
+//!         .poll_interval(Duration::from_secs(3))
+//!         .build();
 //!
 //!     // Get a phone number
-//!     let result = service.get_number(CountryCode::USA).await?;
+//!     let result = service.get_number(CountryCode::USA, Service::Whatsapp).await?;
 //!     println!("Got number: {}", result.full_number);
 //!
 //!     // Wait for SMS code
@@ -53,10 +52,10 @@
 //! ## Architecture
 //!
 //! ```text
-//! SmsService<P>
+//! SmsSolverService<P>
 //!         │
 //!         ▼
-//! RetryableProvider<P>  (optional retry wrapper)
+//! SmsRetryableProvider<P>  (optional retry wrapper)
 //!         │
 //!         ▼
 //!     Provider          (trait: SmsActivateProvider, etc.)
@@ -67,19 +66,55 @@
 //! - `sms-activate` - SMS Activate provider support (enabled by default)
 //! - `tracing` - OpenTelemetry tracing instrumentation (enabled by default)
 
-pub mod errors;
-pub mod provider;
-pub mod providers;
-pub mod retry;
-pub mod service;
-pub mod types;
+mod errors;
+mod providers;
+mod service;
+mod types;
+mod utils;
 
-// Re-export commonly used types at the crate root
+// Re-export error types
 pub use errors::RetryableError;
-pub use provider::{Provider, RetryableProvider};
-pub use retry::RetryConfig;
+
+// Re-export provider types
+pub use providers::{Provider, SmsRetryableProvider};
+
+// Re-export service types
 pub use service::{
-    ServiceError, SmsService, SmsServiceBuilder, SmsServiceConfig, SmsServiceConfigBuilder,
-    SmsServiceTrait,
+    SmsSolverService, SmsSolverServiceBuilder, SmsSolverServiceConfig,
+    SmsSolverServiceConfigBuilder, SmsSolverServiceError, SmsSolverServiceTrait,
 };
+
+// Re-export core types
 pub use types::{DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId};
+
+// Re-export utility types
+pub use utils::RetryConfig;
+
+// Re-export isocountry so users don't need to add it as a separate dependency
+pub use isocountry::CountryCode;
+
+/// SMS Activate provider types.
+///
+/// This module provides integration with the SMS Activate service
+/// for phone number verification.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use sms_solvers::sms_activate::{SmsActivateProvider, SmsActivateClient, Service};
+/// use sms_solvers::{SmsSolverService, SmsSolverServiceTrait, SmsRetryableProvider};
+/// use isocountry::CountryCode;
+///
+/// let client = SmsActivateClient::with_api_key("your_api_key")?;
+/// let provider = SmsActivateProvider::new(client);
+/// let service = SmsSolverService::with_provider(SmsRetryableProvider::new(provider));
+///
+/// let result = service.get_number(CountryCode::TUR, Service::Whatsapp).await?;
+/// let code = service.wait_for_sms_code(&result.task_id).await?;
+/// ```
+#[cfg(feature = "sms-activate")]
+pub mod sms_activate {
+    pub use crate::providers::sms_activate::{
+        Service, SmsActivateClient, SmsActivateError, SmsActivateProvider, SmsCountryExt,
+    };
+}

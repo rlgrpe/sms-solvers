@@ -16,7 +16,7 @@ use std::fmt;
 /// # Examples
 ///
 /// ```rust
-/// use sms_solvers::errors::RetryableError;
+/// use sms_solvers::RetryableError;
 ///
 /// enum MyError {
 ///     NetworkTimeout,      // Retry same task

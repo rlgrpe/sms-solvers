@@ -10,7 +10,7 @@
 //! ```
 
 use isocountry::CountryCode;
-use sms_solvers::providers::sms_activate::{SmsActivateProvider, SmsCountryExt};
+use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, SmsCountryExt};
 use sms_solvers::{DialCode, Provider};
 
 fn main() {
@@ -96,7 +96,6 @@ fn main() {
     println!("\n=== Provider Blacklist Demo ===\n");
 
     // Demonstrate dial code blacklisting
-    use sms_solvers::providers::sms_activate::SmsActivateClient;
     use std::collections::HashSet;
 
     let client = SmsActivateClient::with_api_key("demo_key").unwrap();

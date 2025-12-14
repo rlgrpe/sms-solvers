@@ -5,7 +5,7 @@ use super::countries::CC2SMS_ID;
 use super::errors::{Result, SmsActivateError};
 use super::services::Service;
 use super::types::ActivationStatus;
-use crate::provider::Provider;
+use crate::providers::traits::Provider;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
 use isocountry::CountryCode;
 use std::collections::HashSet;

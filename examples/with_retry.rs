@@ -10,8 +10,11 @@
 //! ```
 
 use isocountry::CountryCode;
-use sms_solvers::providers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
-use sms_solvers::{RetryConfig, RetryableProvider, SmsService, SmsServiceConfig, SmsServiceTrait};
+use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
+use sms_solvers::{
+    RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    SmsSolverServiceTrait,
+};
 use std::env;
 use std::time::Duration;
 
@@ -35,16 +38,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_retries(3);
 
     // Wrap provider with retry logic
-    let retryable_provider = RetryableProvider::with_config(provider, retry_config);
+    let retryable_provider = SmsRetryableProvider::with_config(provider, retry_config);
 
     // Configure the service
-    let config = SmsServiceConfig {
-        wait_sms_code_timeout: Duration::from_secs(180),
-        poll_interval: Duration::from_secs(5),
-    };
+    let config = SmsSolverServiceConfig::default()
+        .with_timeout(Duration::from_secs(180))
+        .with_poll_interval(Duration::from_secs(5));
 
     // Create the service with retry-enabled provider
-    let service = SmsService::new(retryable_provider, config);
+    let service = SmsSolverService::new(retryable_provider, config);
 
     // Request a phone number for USA (WhatsApp verification)
     println!("Requesting phone number for USA (WhatsApp, with retry enabled)...");

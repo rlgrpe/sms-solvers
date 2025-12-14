@@ -24,13 +24,12 @@
 //!
 //! **WARNING**: These tests will consume API credits!
 
-use isocountry::CountryCode;
-use sms_solvers::providers::sms_activate::errors::SmsActivateErrorCode;
-use sms_solvers::providers::sms_activate::{
+use sms_solvers::sms_activate::{
     Service, SmsActivateClient, SmsActivateError, SmsActivateProvider, SmsCountryExt,
 };
 use sms_solvers::{
-    Provider, RetryConfig, RetryableProvider, SmsService, SmsServiceConfig, SmsServiceTrait,
+    CountryCode, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService,
+    SmsSolverServiceConfig, SmsSolverServiceTrait,
 };
 use std::env;
 use std::time::Duration;
@@ -40,18 +39,13 @@ const TEST_SERVICE: Service = Service::InstagramThreads;
 
 /// Helper to check if error is "no numbers available".
 fn is_no_numbers_error(err: &SmsActivateError) -> bool {
-    matches!(
-        err,
-        SmsActivateError::Service(e) if e.code == SmsActivateErrorCode::NoNumbers
-    )
+    use sms_solvers::sms_activate::SmsActivateError as E;
+    matches!(err, E::Service(e) if e.code.code_name() == "NO_NUMBERS")
 }
 
 /// Helper to check if error is authentication related.
 fn is_auth_error(err: &SmsActivateError) -> bool {
-    matches!(
-        err,
-        SmsActivateError::Service(e) if matches!(e.code, SmsActivateErrorCode::BadKey | SmsActivateErrorCode::BadAction)
-    )
+    matches!(err, E::Service(e) if e.code.code_name() == "BAD_KEY" || e.code.code_name() == "BAD_ACTION")
 }
 
 /// Get API key from environment or .env file.
@@ -63,7 +57,7 @@ fn get_api_key() -> String {
         "SMS_ACTIVATE_API_KEY environment variable must be set.\n\
          Either:\n\
          1. Copy tests/.env.example to tests/.env and add your API key\n\
-         2. Run with: SMS_ACTIVATE_API_KEY=your_key cargo test --test sms_activate_api -- --ignored"
+         2. Run with: SMS_ACTIVATE_API_KEY=your_key cargo test --test sms_activate_api -- --ignored",
     )
 }
 
@@ -79,29 +73,27 @@ fn create_provider() -> SmsActivateProvider {
 }
 
 /// Create a test service with default config.
-fn create_service() -> SmsService<SmsActivateProvider> {
+fn create_service() -> SmsSolverService<SmsActivateProvider> {
     let provider = create_provider();
-    let config = SmsServiceConfig {
-        wait_sms_code_timeout: Duration::from_secs(60),
-        poll_interval: Duration::from_secs(5),
-    };
-    SmsService::new(provider, config)
+    let config = SmsSolverServiceConfig::default()
+        .with_timeout(Duration::from_secs(60))
+        .with_poll_interval(Duration::from_secs(5));
+    SmsSolverService::new(provider, config)
 }
 
 /// Create a service with retry wrapper.
-fn create_retryable_service() -> SmsService<RetryableProvider<SmsActivateProvider>> {
+fn create_retryable_service() -> SmsSolverService<SmsRetryableProvider<SmsActivateProvider>> {
     let provider = create_provider();
     let retry_config = RetryConfig::default()
         .with_min_delay(Duration::from_millis(500))
         .with_max_delay(Duration::from_secs(5))
         .with_max_retries(3);
-    let retryable = RetryableProvider::with_config(provider, retry_config);
+    let retryable = SmsRetryableProvider::with_config(provider, retry_config);
 
-    let config = SmsServiceConfig {
-        wait_sms_code_timeout: Duration::from_secs(60),
-        poll_interval: Duration::from_secs(5),
-    };
-    SmsService::new(retryable, config)
+    let config = SmsSolverServiceConfig::default()
+        .with_timeout(Duration::from_secs(60))
+        .with_poll_interval(Duration::from_secs(5));
+    SmsSolverService::new(retryable, config)
 }
 
 // =============================================================================

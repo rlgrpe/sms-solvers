@@ -21,16 +21,17 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.0" }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.1" }
 tokio = { version = "1", features = ["full"] }
 ```
 
 ## Quick Start
 
 ```rust
-use isocountry::CountryCode;
-use sms_solvers::providers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
-use sms_solvers::{SmsService, SmsServiceConfig, SmsServiceTrait};
+use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
+use sms_solvers::{
+    CountryCode, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
+};
 use std::time::Duration;
 
 #[tokio::main]
@@ -40,11 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = SmsActivateProvider::new(client);
 
     // Configure the service
-    let config = SmsServiceConfig {
-        wait_sms_code_timeout: Duration::from_secs(120),
-        poll_interval: Duration::from_secs(3),
-    };
-    let service = SmsService::new(provider, config);
+    let config = SmsSolverServiceConfig::default()
+        .with_timeout(Duration::from_secs(120))
+        .with_poll_interval(Duration::from_secs(3));
+    let service = SmsSolverService::new(provider, config);
 
     // Get a phone number for Instagram verification in Ukraine
     let result = service.get_number(CountryCode::UKR, Service::InstagramThreads).await?;
@@ -60,10 +60,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Using Retry Logic
 
-Wrap the provider with `RetryableProvider` for automatic retry on transient errors:
+Wrap the provider with `SmsRetryableProvider` for automatic retry on transient errors:
 
 ```rust
-use sms_solvers::{RetryConfig, RetryableProvider};
+use sms_solvers::{RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig};
+use std::time::Duration;
 
 let provider = SmsActivateProvider::new(client);
 
@@ -72,8 +73,22 @@ let retry_config = RetryConfig::default ()
 .with_max_delay(Duration::from_secs(5))
 .with_max_retries(3);
 
-let retryable_provider = RetryableProvider::with_config(provider, retry_config);
-let service = SmsService::new(retryable_provider, config);
+let retryable_provider = SmsRetryableProvider::with_config(provider, retry_config);
+
+let config = SmsSolverServiceConfig::default ();
+let service = SmsSolverService::new(retryable_provider, config);
+```
+
+## Using the Builder Pattern
+
+```rust
+use sms_solvers::{SmsSolverService, SmsRetryableProvider};
+use std::time::Duration;
+
+let service = SmsSolverService::builder(SmsRetryableProvider::new(provider))
+.timeout(Duration::from_secs(180))
+.poll_interval(Duration::from_secs(5))
+.build();
 ```
 
 ## Using the Provider Directly
@@ -81,7 +96,8 @@ let service = SmsService::new(retryable_provider, config);
 You can use the provider without the service layer:
 
 ```rust
-use sms_solvers::Provider;
+use sms_solvers::{Provider, CountryCode};
+use sms_solvers::sms_activate::{SmsActivateProvider, Service};
 
 let provider = SmsActivateProvider::new(client);
 
@@ -104,8 +120,10 @@ provider.cancel_activation( & task_id).await?;
 Block specific dial codes from being used:
 
 ```rust
+use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider};
 use std::collections::HashSet;
 
+let client = SmsActivateClient::with_api_key("your_api_key") ?;
 let blacklist: HashSet<String> = ["33", "49"].into_iter().map(String::from).collect();
 let provider = SmsActivateProvider::with_blacklist(client, blacklist);
 
@@ -125,11 +143,11 @@ The library supports various SMS Activate services including:
 
 ## Country Code Mapping
 
-The library automatically maps ISO country codes to SMS Activate IDs:
+The library automatically maps ISO country codes to SMS Activate IDs. `CountryCode` is re-exported from `isocountry`:
 
 ```rust
-use sms_solvers::providers::sms_activate::SmsCountryExt;
-use isocountry::CountryCode;
+use sms_solvers::sms_activate::SmsCountryExt;
+use sms_solvers::CountryCode;
 
 // Get SMS Activate ID for a country
 let sms_id = CountryCode::UKR.sms_id() ?; // Returns 1
@@ -170,10 +188,34 @@ Enable optional features in `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.0", features = ["tracing"] }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.1", features = ["tracing"] }
 ```
 
-- `tracing` - Enables tracing instrumentation and OpenTelemetry integration
+- `sms-activate` - SMS Activate provider support (enabled by default)
+- `tracing` - Enables tracing instrumentation and OpenTelemetry integration (enabled by default)
+
+## Public API
+
+All main types are exported from the crate root:
+
+```rust
+use sms_solvers::{
+    // Core types
+    CountryCode, DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId,
+    // Traits
+    Provider, RetryableError, SmsSolverServiceTrait,
+    // Service
+    SmsSolverService, SmsSolverServiceBuilder,
+    SmsSolverServiceConfig, SmsSolverServiceConfigBuilder, SmsSolverServiceError,
+    // Retry
+    RetryConfig, SmsRetryableProvider,
+};
+
+// Provider-specific types under sms_activate module
+use sms_solvers::sms_activate::{
+    SmsActivateClient, SmsActivateProvider, SmsActivateError, Service, SmsCountryExt,
+};
+```
 
 ## License
 
