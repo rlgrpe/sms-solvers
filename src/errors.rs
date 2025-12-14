@@ -1,7 +1,5 @@
 //! Error types and traits for SMS verification operations.
 
-use std::fmt;
-
 /// Trait for errors that can be classified as retryable or permanent.
 ///
 /// This trait provides two levels of retryability classification:
@@ -16,7 +14,7 @@ use std::fmt;
 /// # Examples
 ///
 /// ```rust
-/// use sms_solvers::errors::RetryableError;
+/// use sms_solvers::RetryableError;
 ///
 /// enum MyError {
 ///     NetworkTimeout,      // Retry same task
@@ -65,35 +63,3 @@ pub trait RetryableError {
         self.is_retryable()
     }
 }
-
-/// Error for task types not supported by a provider.
-///
-/// This error is returned when attempting to use a feature
-/// that is not supported by the current provider.
-#[derive(Debug, Clone)]
-pub struct UnsupportedFeatureError {
-    /// The feature that is not supported.
-    pub feature: &'static str,
-    /// The provider name that doesn't support this feature.
-    pub provider: &'static str,
-}
-
-impl UnsupportedFeatureError {
-    /// Create a new unsupported feature error.
-    pub fn new(feature: &'static str, provider: &'static str) -> Self {
-        Self { feature, provider }
-    }
-}
-
-impl fmt::Display for UnsupportedFeatureError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Feature '{}' is not supported by {}. \
-             This feature is only available with other providers.",
-            self.feature, self.provider
-        )
-    }
-}
-
-impl std::error::Error for UnsupportedFeatureError {}

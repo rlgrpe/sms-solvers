@@ -8,19 +8,18 @@ use sms_solvers::DialCode;
 /// Helper function to get dial code for a country using the service module's function.
 /// Since the function is private, we test it indirectly through the public API.
 mod service_dial_code {
-    use sms_solvers::providers::sms_activate::{SmsActivateClient, SmsActivateProvider};
-    use sms_solvers::{SmsService, SmsServiceConfig};
+    use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider};
+    use sms_solvers::{SmsSolverService, SmsSolverServiceConfig};
     use std::time::Duration;
 
     /// Create a test service to access dial code functionality.
-    pub fn create_test_service() -> SmsService<SmsActivateProvider> {
+    pub fn create_test_service() -> SmsSolverService<SmsActivateProvider> {
         let client = SmsActivateClient::with_api_key("test_key").unwrap();
         let provider = SmsActivateProvider::new(client);
-        let config = SmsServiceConfig {
-            wait_sms_code_timeout: Duration::from_secs(1),
-            poll_interval: Duration::from_millis(100),
-        };
-        SmsService::new(provider, config)
+        let config = SmsSolverServiceConfig::default()
+            .with_timeout(Duration::from_secs(1))
+            .with_poll_interval(Duration::from_millis(100));
+        SmsSolverService::new(provider, config)
     }
 }
 

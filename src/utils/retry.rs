@@ -74,16 +74,3 @@ impl RetryConfig {
             .with_max_times(self.max_retries)
     }
 }
-
-/// Default retry strategy for SMS operations.
-///
-/// Uses exponential backoff with:
-/// - Initial delay: 1 second
-/// - Max delay: 30 seconds
-/// - Factor: 2x
-/// - Max retries: 3
-///
-/// For custom retry settings, use [`RetryConfig`] instead.
-pub fn default_retry_strategy() -> ExponentialBuilder {
-    RetryConfig::default().build_strategy()
-}

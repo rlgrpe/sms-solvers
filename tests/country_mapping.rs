@@ -5,7 +5,7 @@
 
 use isocountry::CountryCode;
 use sms_solvers::DialCode;
-use sms_solvers::providers::sms_activate::SmsCountryExt;
+use sms_solvers::sms_activate::SmsCountryExt;
 
 /// Test that popular countries have valid SMS Activate mappings.
 #[test]

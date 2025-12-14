@@ -10,10 +10,9 @@
 //! ```
 
 use isocountry::CountryCode;
-use sms_solvers::providers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
-use sms_solvers::{SmsService, SmsServiceConfig, SmsServiceTrait};
+use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
+use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait};
 use std::env;
-use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,14 +26,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the provider (service-agnostic)
     let provider = SmsActivateProvider::new(client);
 
-    // Configure the service
-    let config = SmsServiceConfig {
-        wait_sms_code_timeout: Duration::from_secs(120),
-        poll_interval: Duration::from_secs(3),
-    };
+    // Use the balanced preset (default) - 120s timeout, 3s poll interval
+    // Other presets available: SmsSolverServiceConfig::fast(), SmsSolverServiceConfig::patient()
+    let config = SmsSolverServiceConfig::balanced();
+
+    // Validate the config (optional but recommended for custom configs)
+    config.validate()?;
 
     // Create the service
-    let service = SmsService::new(provider, config);
+    let service = SmsSolverService::new(provider, config);
 
     // Request a phone number for Ukraine for Instagram verification
     println!("Requesting phone number for Ukraine (Instagram)...");
@@ -44,8 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Got phone number:");
     println!("  Task ID: {}", result.task_id);
-    println!("  Full number: {}", result.full_number);
-    println!("  Dial code: {}", result.dial_code);
+    // Use with_plus_prefix() for international format
+    println!("  Full number: {}", result.full_number.with_plus_prefix());
+    println!("  Dial code: +{}", result.dial_code);
     println!("  Number: {}", result.number);
     println!(
         "  Country: {} ({})",

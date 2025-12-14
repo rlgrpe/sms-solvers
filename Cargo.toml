@@ -1,6 +1,6 @@
 [package]
 name = "sms-solvers"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Generic SMS verification library with provider abstraction"
 license = "MIT"
@@ -13,10 +13,13 @@ default = ["sms-activate", "tracing"]
 sms-activate = []
 # Enable tracing instrumentation with OpenTelemetry support
 tracing = ["dep:tracing", "dep:tracing-opentelemetry", "dep:opentelemetry"]
+# Enable OpenTelemetry metrics support
+metrics = ["dep:opentelemetry"]
 
 [dependencies]
 # Core
 tokio = { version = "1.44", features = ["time"] }
+tokio-util = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
@@ -41,7 +44,7 @@ once_cell = "1.20"
 # Tracing (optional)
 tracing = { version = "0.1", optional = true }
 tracing-opentelemetry = { version = "0.31", optional = true }
-opentelemetry = { version = "0.30", features = ["trace"], optional = true }
+opentelemetry = { version = "0.30", features = ["trace", "metrics"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.44", features = ["full", "macros"] }
