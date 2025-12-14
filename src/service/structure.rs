@@ -517,3 +517,280 @@ where
         SmsSolverService::new(self.provider, self.config_builder.build())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::RetryableError;
+    use crate::types::FullNumber;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+    use thiserror::Error;
+
+    // Mock provider for testing
+    #[derive(Clone)]
+    #[allow(clippy::type_complexity)]
+    struct MockProvider {
+        get_number_result: Arc<std::sync::Mutex<Option<Result<(TaskId, FullNumber), MockError>>>>,
+        sms_code_results: Arc<std::sync::Mutex<Vec<Result<Option<SmsCode>, MockError>>>>,
+        cancel_result: Arc<std::sync::Mutex<Option<Result<(), MockError>>>>,
+        poll_count: Arc<AtomicU32>,
+    }
+
+    #[derive(Debug, Clone, Error)]
+    #[allow(dead_code)]
+    enum MockError {
+        #[error("Mock error: {0}")]
+        Generic(String),
+        #[error("Transient error")]
+        Transient,
+    }
+
+    impl RetryableError for MockError {
+        fn is_retryable(&self) -> bool {
+            matches!(self, MockError::Transient)
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockService;
+
+    impl MockProvider {
+        fn new() -> Self {
+            Self {
+                get_number_result: Arc::new(std::sync::Mutex::new(None)),
+                sms_code_results: Arc::new(std::sync::Mutex::new(Vec::new())),
+                cancel_result: Arc::new(std::sync::Mutex::new(None)),
+                poll_count: Arc::new(AtomicU32::new(0)),
+            }
+        }
+
+        fn with_number(self, task_id: &str, number: &str) -> Self {
+            *self.get_number_result.lock().unwrap() =
+                Some(Ok((TaskId::new(task_id), FullNumber::new(number))));
+            self
+        }
+
+        fn with_sms_after_polls(self, polls: u32, code: &str) -> Self {
+            {
+                let mut results = self.sms_code_results.lock().unwrap();
+                for _ in 0..polls {
+                    results.push(Ok(None));
+                }
+                results.push(Ok(Some(SmsCode::new(code))));
+            }
+            self
+        }
+
+        fn with_cancel_success(self) -> Self {
+            *self.cancel_result.lock().unwrap() = Some(Ok(()));
+            self
+        }
+
+        fn with_cancel_error(self, msg: &str) -> Self {
+            *self.cancel_result.lock().unwrap() = Some(Err(MockError::Generic(msg.to_string())));
+            self
+        }
+    }
+
+    impl Provider for MockProvider {
+        type Error = MockError;
+        type Service = MockService;
+
+        async fn get_phone_number(
+            &self,
+            _country: CountryCode,
+            _service: Self::Service,
+        ) -> Result<(TaskId, FullNumber), Self::Error> {
+            self.get_number_result
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or(Err(MockError::Generic("Not configured".to_string())))
+        }
+
+        async fn get_sms_code(&self, _task_id: &TaskId) -> Result<Option<SmsCode>, Self::Error> {
+            let idx = self.poll_count.fetch_add(1, Ordering::SeqCst) as usize;
+            let results = self.sms_code_results.lock().unwrap();
+            results.get(idx).cloned().unwrap_or(Ok(None))
+        }
+
+        async fn finish_activation(&self, _task_id: &TaskId) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cancel_activation(&self, _task_id: &TaskId) -> Result<(), Self::Error> {
+            self.cancel_result.lock().unwrap().clone().unwrap_or(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_sms_code_success() {
+        let provider = MockProvider::new()
+            .with_number("task123", "380501234567")
+            .with_sms_after_polls(2, "123456");
+
+        let config = SmsSolverServiceConfig::builder()
+            .timeout(Duration::from_secs(60))
+            .poll_interval(Duration::from_millis(10))
+            .build();
+
+        let service = SmsSolverService::new(provider.clone(), config);
+
+        let result = service
+            .get_number(CountryCode::UKR, MockService)
+            .await
+            .unwrap();
+        assert_eq!(result.task_id.as_ref(), "task123");
+
+        let code = service.wait_for_sms_code(&result.task_id).await.unwrap();
+        assert_eq!(code.as_str(), "123456");
+
+        // Should have polled 3 times (2 None + 1 Some)
+        assert_eq!(provider.poll_count.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_sms_code_timeout() {
+        let provider = MockProvider::new()
+            .with_number("task123", "380501234567")
+            .with_cancel_success();
+
+        // Very short timeout, SMS never arrives
+        let config = SmsSolverServiceConfig::builder()
+            .timeout(Duration::from_millis(50))
+            .poll_interval(Duration::from_millis(10))
+            .build();
+
+        let service = SmsSolverService::new(provider, config);
+
+        let result = service
+            .get_number(CountryCode::UKR, MockService)
+            .await
+            .unwrap();
+
+        let err = service
+            .wait_for_sms_code(&result.task_id)
+            .await
+            .unwrap_err();
+
+        match err {
+            SmsSolverServiceError::SmsTimeout {
+                timeout,
+                poll_count,
+                task_id,
+                ..
+            } => {
+                assert_eq!(timeout, Duration::from_millis(50));
+                assert!(poll_count > 0);
+                assert_eq!(task_id.as_ref(), "task123");
+            }
+            _ => panic!("Expected SmsTimeout error, got {:?}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_sms_code_cancellation() {
+        let provider = MockProvider::new()
+            .with_number("task123", "380501234567")
+            .with_cancel_success();
+
+        let config = SmsSolverServiceConfig::builder()
+            .timeout(Duration::from_secs(60))
+            .poll_interval(Duration::from_millis(10))
+            .build();
+
+        let service = SmsSolverService::new(provider, config);
+
+        let result = service
+            .get_number(CountryCode::UKR, MockService)
+            .await
+            .unwrap();
+
+        let cancel_token = CancellationToken::new();
+        let token_clone = cancel_token.clone();
+
+        // Cancel immediately
+        token_clone.cancel();
+
+        let err = service
+            .wait_for_sms_code_cancellable(&result.task_id, cancel_token)
+            .await
+            .unwrap_err();
+
+        match err {
+            SmsSolverServiceError::Cancelled {
+                poll_count,
+                task_id,
+                ..
+            } => {
+                assert_eq!(poll_count, 0); // Cancelled before any polls
+                assert_eq!(task_id.as_ref(), "task123");
+            }
+            _ => panic!("Expected Cancelled error, got {:?}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cancel_failure_on_timeout() {
+        let provider = MockProvider::new()
+            .with_number("task123", "380501234567")
+            .with_cancel_error("Cancel failed");
+
+        let config = SmsSolverServiceConfig::builder()
+            .timeout(Duration::from_millis(50))
+            .poll_interval(Duration::from_millis(10))
+            .build();
+
+        let service = SmsSolverService::new(provider, config);
+
+        let result = service
+            .get_number(CountryCode::UKR, MockService)
+            .await
+            .unwrap();
+
+        let err = service
+            .wait_for_sms_code(&result.task_id)
+            .await
+            .unwrap_err();
+
+        match err {
+            SmsSolverServiceError::CancelFailed { task_id, message } => {
+                assert_eq!(task_id.as_ref(), "task123");
+                assert!(message.contains("Cancel failed"));
+            }
+            _ => panic!("Expected CancelFailed error, got {:?}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_service_builder() {
+        let provider = MockProvider::new().with_number("task123", "380501234567");
+
+        let service = SmsSolverService::builder(provider)
+            .timeout(Duration::from_secs(90))
+            .poll_interval(Duration::from_secs(5))
+            .build();
+
+        assert_eq!(service.config().timeout, Duration::from_secs(90));
+        assert_eq!(service.config().poll_interval, Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn test_service_with_config_presets() {
+        let provider = MockProvider::new();
+
+        let fast_service = SmsSolverService::new(provider.clone(), SmsSolverServiceConfig::fast());
+        assert_eq!(fast_service.config().timeout, Duration::from_secs(60));
+        assert_eq!(fast_service.config().poll_interval, Duration::from_secs(1));
+
+        let patient_service =
+            SmsSolverService::new(provider.clone(), SmsSolverServiceConfig::patient());
+        assert_eq!(patient_service.config().timeout, Duration::from_secs(300));
+        assert_eq!(
+            patient_service.config().poll_interval,
+            Duration::from_secs(5)
+        );
+    }
+}
