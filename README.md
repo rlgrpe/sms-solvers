@@ -3,6 +3,9 @@
 A Rust library for SMS verification services. Currently supports [SMS Activate](https://sms-activate.org/) with a
 flexible provider architecture that allows adding new SMS providers.
 
+> **[Sign up for SMS Activate](https://sms-activate.io/?ref=834121)** - Get 10% cashback on your first deposit (up to $
+> 30)!
+
 > **Disclaimer**: This library is provided as-is. I am not obligated to maintain it, fix bugs, or add features. If you
 > want to contribute improvements, please submit a pull request.
 
