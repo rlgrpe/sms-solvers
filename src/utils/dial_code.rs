@@ -32,7 +32,7 @@ static ALPHA2_TO_DIAL_CODE: Lazy<HashMap<String, String>> = Lazy::new(|| {
 });
 
 /// Convert a country code to its dial code.
-pub fn country_to_dial_code(country: CountryCode) -> Option<DialCode> {
+pub(crate) fn country_to_dial_code(country: CountryCode) -> Option<DialCode> {
     let alpha2 = country.alpha2();
     let dial_code_str = ALPHA2_TO_DIAL_CODE.get(alpha2)?;
     DialCode::new(dial_code_str).ok()
