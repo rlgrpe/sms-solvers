@@ -1,11 +1,12 @@
 //! Core types for SMS verification operations.
 
+use crate::utils::dial_code::country_to_dial_code;
 use isocountry::CountryCode;
+use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use thiserror::Error;
-
 // =============================================================================
 // TaskId
 // =============================================================================
@@ -226,6 +227,15 @@ impl DialCode {
         Ok(Self(n.to_string()))
     }
 
+    /// Generate a random popular DialCode.
+    #[cfg(feature = "random")]
+    pub fn generate() -> Result<Self, DialCodeError> {
+        const POPULAR_CODES: &[&str] = &["1", "44", "49", "7", "380", "91", "81", "61", "33", "39"];
+        let mut rng = rand::thread_rng();
+        let idx = rng.gen_range(0..POPULAR_CODES.len());
+        Self::new(POPULAR_CODES[idx])
+    }
+
     /// Get the dial code as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -256,6 +266,17 @@ impl<'de> Deserialize<'de> for DialCode {
 impl Serialize for DialCode {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.0)
+    }
+}
+
+impl TryFrom<CountryCode> for DialCode {
+    type Error = DialCodeError;
+
+    fn try_from(country: CountryCode) -> Result<Self, Self::Error> {
+        match country_to_dial_code(country) {
+            Some(dc) => Ok(dc),
+            None => Err(DialCodeError::Empty),
+        }
     }
 }
 
@@ -335,6 +356,15 @@ impl Number {
             .ok_or(NumberError::MissingDialCode)?;
 
         Self::new(number_part)
+    }
+
+    /// Generate a random valid Number.
+    #[cfg(feature = "random")]
+    pub fn generate() -> Result<Self, NumberError> {
+        let mut rng = rand::thread_rng();
+        let first: u64 = rng.gen_range(1..10);
+        let rest: u64 = rng.gen_range(0..1_000_000_000);
+        Number::new(format!("{first}{rest:09}"))
     }
 
     /// Get the number as a string slice.

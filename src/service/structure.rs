@@ -6,7 +6,6 @@ use super::traits::SmsSolverServiceTrait;
 use crate::errors::RetryableError;
 use crate::providers::traits::Provider;
 use crate::types::{Number, SmsCode, SmsTaskResult, TaskId};
-use crate::utils::dial_code::country_to_dial_code;
 use isocountry::CountryCode;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Display};
@@ -22,6 +21,7 @@ use opentelemetry::{
     metrics::{Counter, Histogram},
 };
 
+use crate::DialCode;
 #[cfg(feature = "metrics")]
 use std::sync::OnceLock;
 
@@ -220,12 +220,11 @@ where
                 }
             })?;
 
-        let dial_code = country_to_dial_code(country).ok_or_else(|| {
-            SmsSolverServiceError::InvalidDialCode {
+        let dial_code =
+            DialCode::try_from(country).map_err(|_| SmsSolverServiceError::InvalidDialCode {
                 dial_code: "unknown".to_string(),
                 country,
-            }
-        })?;
+            })?;
 
         let number = Number::from_full_number(&full_number, &dial_code).map_err(|e| {
             SmsSolverServiceError::NumberParse {
