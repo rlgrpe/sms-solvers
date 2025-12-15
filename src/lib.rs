@@ -88,7 +88,9 @@ pub use service::{
 pub use tokio_util::sync::CancellationToken;
 
 // Re-export core types
-pub use types::{DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId};
+pub use types::{
+    DialCode, DialCodeError, FullNumber, Number, NumberError, SmsCode, SmsTaskResult, TaskId,
+};
 
 // Re-export utility types
 pub use utils::RetryConfig;
