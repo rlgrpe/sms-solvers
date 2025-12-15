@@ -101,7 +101,10 @@ fn main() {
     let client = SmsActivateClient::with_api_key("demo_key").unwrap();
 
     // Create provider with blacklisted dial codes
-    let blacklist: HashSet<String> = ["33", "49"].iter().map(|s| s.to_string()).collect();
+    let blacklist: HashSet<DialCode> = ["33", "49"]
+        .iter()
+        .map(|s| DialCode::new(s).unwrap())
+        .collect();
     let provider = SmsActivateProvider::with_blacklist(client, blacklist);
 
     let test_codes = ["1", "33", "44", "49", "380"];

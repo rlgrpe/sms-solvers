@@ -1,7 +1,7 @@
 //! Service-level error types.
 
 use crate::errors::RetryableError;
-use crate::types::TaskId;
+use crate::types::{DialCode, TaskId};
 use isocountry::CountryCode;
 use std::error::Error as StdError;
 use std::time::Duration;
@@ -76,6 +76,15 @@ pub enum SmsSolverServiceError {
         /// Error message from the cancellation attempt.
         message: String,
     },
+
+    /// The dial code is blacklisted.
+    #[error("Dial code +{dial_code} is blacklisted")]
+    DialCodeBlacklisted {
+        /// The blacklisted dial code.
+        dial_code: DialCode,
+        /// The task ID that was cancelled due to blacklist.
+        task_id: TaskId,
+    },
 }
 
 impl RetryableError for SmsSolverServiceError {
@@ -87,7 +96,8 @@ impl RetryableError for SmsSolverServiceError {
             | SmsSolverServiceError::CancelFailed { .. }
             | SmsSolverServiceError::NoNumbersAvailable { .. }
             | SmsSolverServiceError::InvalidDialCode { .. }
-            | SmsSolverServiceError::NumberParse { .. } => false,
+            | SmsSolverServiceError::NumberParse { .. }
+            | SmsSolverServiceError::DialCodeBlacklisted { .. } => false,
         }
     }
 
@@ -99,10 +109,11 @@ impl RetryableError for SmsSolverServiceError {
             } => *should_retry_operation,
             SmsSolverServiceError::SmsTimeout { .. } => true,
             SmsSolverServiceError::NoNumbersAvailable { .. } => true,
-            SmsSolverServiceError::Cancelled { .. } => false,
-            SmsSolverServiceError::CancelFailed { .. } => false,
-            SmsSolverServiceError::InvalidDialCode { .. }
-            | SmsSolverServiceError::NumberParse { .. } => false,
+            SmsSolverServiceError::Cancelled { .. }
+            | SmsSolverServiceError::CancelFailed { .. }
+            | SmsSolverServiceError::InvalidDialCode { .. }
+            | SmsSolverServiceError::NumberParse { .. }
+            | SmsSolverServiceError::DialCodeBlacklisted { .. } => false,
         }
     }
 }
