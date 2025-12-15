@@ -226,6 +226,24 @@ where
                 country,
             })?;
 
+        // Check if the dial code is blacklisted
+        if !self.provider.is_dial_code_supported(&dial_code) {
+            #[cfg(feature = "tracing")]
+            warn!(
+                task_id = %task_id,
+                dial_code = %dial_code,
+                "Dial code is blacklisted, cancelling activation"
+            );
+
+            // Cancel the activation since we won't use this number
+            if let Err(e) = self.provider.cancel_activation(&task_id).await {
+                #[cfg(feature = "tracing")]
+                warn!(error = %e, "Failed to cancel activation for blacklisted number");
+            }
+
+            return Err(SmsSolverServiceError::DialCodeBlacklisted { dial_code, task_id });
+        }
+
         let number = Number::from_full_number(&full_number, &dial_code).map_err(|e| {
             SmsSolverServiceError::NumberParse {
                 full_number: full_number.to_string(),

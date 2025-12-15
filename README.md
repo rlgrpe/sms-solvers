@@ -124,15 +124,19 @@ Block specific dial codes from being used:
 
 ```rust
 use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider};
+use sms_solvers::DialCode;
 use std::collections::HashSet;
 
 let client = SmsActivateClient::with_api_key("your_api_key") ?;
-let blacklist: HashSet<String> = ["33", "49"].into_iter().map(String::from).collect();
+let blacklist: HashSet<DialCode> = ["33", "49"]
+.into_iter()
+.map( | s| DialCode::new(s).unwrap())
+.collect();
 let provider = SmsActivateProvider::with_blacklist(client, blacklist);
 
-// Or add blacklist after creation
+// Or add after creation
 let mut provider = SmsActivateProvider::new(client);
-provider.blacklist_dial_code("33");
+provider.blacklist_dial_code(DialCode::new("33").unwrap());
 ```
 
 ## Supported Services

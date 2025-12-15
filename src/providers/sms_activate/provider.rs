@@ -44,7 +44,7 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub struct SmsActivateProvider {
     client: SmsActivateClient,
-    blacklisted_dial_codes: HashSet<String>,
+    blacklisted_dial_codes: HashSet<DialCode>,
 }
 
 impl SmsActivateProvider {
@@ -62,7 +62,7 @@ impl SmsActivateProvider {
     /// Create a new SMS Activate provider with a blacklist of dial codes.
     ///
     /// Numbers from blacklisted dial codes will not be used.
-    pub fn with_blacklist(client: SmsActivateClient, blacklist: HashSet<String>) -> Self {
+    pub fn with_blacklist(client: SmsActivateClient, blacklist: HashSet<DialCode>) -> Self {
         Self {
             client,
             blacklisted_dial_codes: blacklist,
@@ -70,12 +70,12 @@ impl SmsActivateProvider {
     }
 
     /// Add a dial code to the blacklist.
-    pub fn blacklist_dial_code(&mut self, dial_code: impl Into<String>) {
-        self.blacklisted_dial_codes.insert(dial_code.into());
+    pub fn blacklist_dial_code(&mut self, dial_code: DialCode) {
+        self.blacklisted_dial_codes.insert(dial_code);
     }
 
     /// Remove a dial code from the blacklist.
-    pub fn remove_from_blacklist(&mut self, dial_code: &str) -> bool {
+    pub fn remove_from_blacklist(&mut self, dial_code: &DialCode) -> bool {
         self.blacklisted_dial_codes.remove(dial_code)
     }
 
@@ -85,7 +85,7 @@ impl SmsActivateProvider {
     }
 
     /// Get the blacklisted dial codes.
-    pub fn blacklisted_dial_codes(&self) -> &HashSet<String> {
+    pub fn blacklisted_dial_codes(&self) -> &HashSet<DialCode> {
         &self.blacklisted_dial_codes
     }
 }
@@ -155,7 +155,7 @@ impl Provider for SmsActivateProvider {
     }
 
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
-        !self.blacklisted_dial_codes.contains(dial_code.as_str())
+        !self.blacklisted_dial_codes.contains(dial_code)
     }
 
     fn supports_service(&self, _service: &Self::Service) -> bool {
@@ -283,10 +283,10 @@ mod tests {
         let dial_code = DialCode::new("33").unwrap();
         assert!(provider.is_dial_code_supported(&dial_code));
 
-        provider.blacklist_dial_code("33");
+        provider.blacklist_dial_code(dial_code.clone());
         assert!(!provider.is_dial_code_supported(&dial_code));
 
-        provider.remove_from_blacklist("33");
+        provider.remove_from_blacklist(&dial_code);
         assert!(provider.is_dial_code_supported(&dial_code));
     }
 
