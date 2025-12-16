@@ -1,6 +1,6 @@
 [package]
 name = "sms-solvers"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 description = "Generic SMS verification library with provider abstraction"
 license = "MIT"

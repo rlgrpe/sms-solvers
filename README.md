@@ -33,7 +33,7 @@ tokio = { version = "1", features = ["full"] }
 ```rust
 use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
 use sms_solvers::{
-    CountryCode, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
+    Alpha2, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
 };
 use std::time::Duration;
 
@@ -50,7 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = SmsSolverService::new(provider, config);
 
     // Get a phone number for Instagram verification in Ukraine
-    let result = service.get_number(CountryCode::UKR, Service::InstagramThreads).await?;
+    let result = service
+        .get_number(Alpha2::UA.to_country(), Service::InstagramThreads)
+        .await?;
     println!("Got number: +{}", result.full_number);
 
     // Wait for SMS code
@@ -99,14 +101,14 @@ let service = SmsSolverService::builder(SmsRetryableProvider::new(provider))
 You can use the provider without the service layer:
 
 ```rust
-use sms_solvers::{Provider, CountryCode};
+use sms_solvers::{Alpha2, Provider};
 use sms_solvers::sms_activate::{SmsActivateProvider, Service};
 
 let provider = SmsActivateProvider::new(client);
 
 // Get a phone number
 let (task_id, full_number) = provider
-.get_phone_number(CountryCode::USA, Service::Whatsapp)
+.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp)
 .await?;
 
 // Poll for SMS code
@@ -150,17 +152,18 @@ The library supports various SMS Activate services including:
 
 ## Country Code Mapping
 
-The library automatically maps ISO country codes to SMS Activate IDs. `CountryCode` is re-exported from `isocountry`:
+The library automatically maps ISO country codes to SMS Activate IDs. `Alpha2` and `Country` are
+re-exported from `keshvar` along with the `SmsCountryExt` helper trait:
 
 ```rust
 use sms_solvers::sms_activate::SmsCountryExt;
-use sms_solvers::CountryCode;
+use sms_solvers::{Alpha2, Country};
 
 // Get SMS Activate ID for a country
-let sms_id = CountryCode::UKR.sms_id() ?; // Returns 1
+let sms_id = Alpha2::UA.to_country().sms_id() ?; // Returns 1
 
 // Get country from SMS Activate ID
-let country = CountryCode::from_sms_id(1) ?; // Returns CountryCode::UKR
+let country = Country::from_sms_id(1) ?; // Returns Country::Ukraine
 ```
 
 ## Running Examples
@@ -195,7 +198,7 @@ Enable optional features in `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.1", features = ["tracing"] }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.2.0", features = ["tracing"] }
 ```
 
 - `sms-activate` - SMS Activate provider support (enabled by default)
@@ -208,7 +211,7 @@ All main types are exported from the crate root:
 ```rust
 use sms_solvers::{
     // Core types
-    CountryCode, DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId,
+    Alpha2, Country, DialCode, FullNumber, Number, SmsCode, SmsTaskResult, TaskId,
     // Traits
     Provider, RetryableError, SmsSolverServiceTrait,
     // Service
