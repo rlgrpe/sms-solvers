@@ -138,8 +138,6 @@ async fn test_get_phone_number_ukraine() {
                 full_number
             );
 
-            tokio::time::sleep(Duration::from_secs(120)).await;
-
             // Cancel the activation to not waste credits
             let cancel_result = provider.cancel_activation(&task_id).await;
             println!("  Cancelled: {:?}", cancel_result.is_ok());
@@ -189,7 +187,6 @@ async fn test_service_get_number() {
             assert_eq!(sms_result.full_number.as_ref(), &expected_full);
 
             // Cancel via provider (service exposes provider())
-            tokio::time::sleep(Duration::from_secs(120)).await;
             let provider = service.provider();
             let _ = provider.cancel_activation(&sms_result.task_id).await;
         }
@@ -226,7 +223,6 @@ async fn test_service_with_retry() {
             );
 
             // For retryable service, we need to create a new provider to cancel
-            tokio::time::sleep(Duration::from_secs(120)).await;
             let cancel_provider = create_provider();
             let _ = cancel_provider.cancel_activation(&sms_result.task_id).await;
         }
@@ -300,7 +296,6 @@ async fn test_get_sms_status() {
         }
 
         // Clean up
-        tokio::time::sleep(Duration::from_secs(120)).await;
         let _ = provider.cancel_activation(&task_id).await;
     }
 }
