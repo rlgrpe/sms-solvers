@@ -9,10 +9,9 @@
 //! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example with_cancellation
 //! ```
 
-use isocountry::CountryCode;
 use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
 use sms_solvers::{
-    CancellationToken, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    Alpha2, CancellationToken, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
     SmsSolverServiceError, SmsSolverServiceTrait,
 };
 use std::env;
@@ -36,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Request a phone number
     println!("Requesting phone number...");
     let result = service
-        .get_number(CountryCode::UKR, Service::InstagramThreads)
+        .get_number(Alpha2::UA.to_country(), Service::InstagramThreads)
         .await?;
 
     println!(

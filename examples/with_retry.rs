@@ -9,10 +9,9 @@
 //! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example with_retry
 //! ```
 
-use isocountry::CountryCode;
 use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
 use sms_solvers::{
-    RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    Alpha2, RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
     SmsSolverServiceTrait,
 };
 use std::env;
@@ -51,14 +50,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Request a phone number for USA (WhatsApp verification)
     println!("Requesting phone number for USA (WhatsApp, with retry enabled)...");
     let result = service
-        .get_number(CountryCode::USA, Service::Whatsapp)
+        .get_number(Alpha2::US.to_country(), Service::Whatsapp)
         .await?;
 
     println!("Got phone number:");
     println!("  Task ID: {}", result.task_id);
     println!("  Full number: {}", result.full_number);
     println!("  Dial code: +{}", result.dial_code);
-    println!("  Country: {}", result.country.name());
+    println!("  Country: {}", result.country.iso_short_name());
 
     // Wait for SMS code with automatic retry on transient errors
     println!("\nWaiting for SMS code (with retry on failures)...");

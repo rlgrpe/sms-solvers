@@ -9,45 +9,45 @@
 //! cargo run --example country_mapping
 //! ```
 
-use isocountry::CountryCode;
 use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, SmsCountryExt};
-use sms_solvers::{DialCode, Provider};
+use sms_solvers::{Alpha2, Country, DialCode, Provider};
 
 fn main() {
     println!("=== Country Code Mapping Demo ===\n");
 
     // List of countries to demonstrate
     let countries = [
-        CountryCode::USA,
-        CountryCode::GBR,
-        CountryCode::UKR,
-        CountryCode::DEU,
-        CountryCode::FRA,
-        CountryCode::JPN,
-        CountryCode::BRA,
-        CountryCode::IND,
-        CountryCode::CHN,
-        CountryCode::TUR,
+        Alpha2::US,
+        Alpha2::GB,
+        Alpha2::UA,
+        Alpha2::DE,
+        Alpha2::FR,
+        Alpha2::JP,
+        Alpha2::BR,
+        Alpha2::IN,
+        Alpha2::CN,
+        Alpha2::TR,
     ];
 
     println!("ISO Code -> SMS Activate ID mapping:\n");
     println!("{:<20} {:<10} {:<15}", "Country", "ISO", "SMS ID");
     println!("{}", "-".repeat(45));
 
-    for country in countries {
+    for alpha2 in countries {
+        let country = alpha2.to_country();
         match country.sms_id() {
             Ok(sms_id) => {
                 println!(
-                    "{:<20} {:<10} {:<15}",
-                    country.name(),
+                    "{:<20} {:?}        {:<15}",
+                    country.iso_short_name(),
                     country.alpha2(),
                     sms_id
                 );
             }
             Err(e) => {
                 println!(
-                    "{:<20} {:<10} Error: {}",
-                    country.name(),
+                    "{:<20} {:?}        Error: {}",
+                    country.iso_short_name(),
                     country.alpha2(),
                     e
                 );
@@ -65,12 +65,12 @@ fn main() {
     println!("{}", "-".repeat(40));
 
     for sms_id in sms_ids {
-        match CountryCode::from_sms_id(sms_id) {
+        match Country::from_sms_id(sms_id) {
             Ok(country) => {
                 println!(
-                    "{:<10} {:<20} {:<10}",
+                    "{:<10} {:<20} {:?}",
                     sms_id,
-                    country.name(),
+                    country.iso_short_name(),
                     country.alpha2()
                 );
             }

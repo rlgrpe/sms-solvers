@@ -9,9 +9,8 @@
 //! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example basic_usage
 //! ```
 
-use isocountry::CountryCode;
 use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
-use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait};
+use sms_solvers::{Alpha2, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait};
 use std::env;
 
 #[tokio::main]
@@ -39,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Request a phone number for Ukraine for Instagram verification
     println!("Requesting phone number for Ukraine (Instagram)...");
     let result = service
-        .get_number(CountryCode::UKR, Service::InstagramThreads)
+        .get_number(Alpha2::UA.to_country(), Service::InstagramThreads)
         .await?;
 
     println!("Got phone number:");
@@ -49,8 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Dial code: +{}", result.dial_code);
     println!("  Number: {}", result.number);
     println!(
-        "  Country: {} ({})",
-        result.country.name(),
+        "  Country: {} ({:?})",
+        result.country.iso_short_name(),
         result.country.alpha2()
     );
 

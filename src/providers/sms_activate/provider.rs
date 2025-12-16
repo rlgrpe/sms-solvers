@@ -1,13 +1,13 @@
 //! SMS Activate provider implementation.
 
 use super::client::SmsActivateClient;
-use super::countries::CC2SMS_ID;
+use super::countries::SMS_ID2COUNTRY;
 use super::errors::{Result, SmsActivateError};
 use super::services::Service;
 use super::types::ActivationStatus;
 use crate::providers::traits::Provider;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::collections::HashSet;
 
 #[cfg(feature = "tracing")]
@@ -22,24 +22,24 @@ use tracing::debug;
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::providers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
-/// use sms_solvers::{SmsService, SmsServiceConfig, RetryableProvider};
+/// use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
+/// use sms_solvers::{SmsSolverService, SmsRetryableProvider, Alpha2};
 ///
 /// // Create client and provider
 /// let client = SmsActivateClient::with_api_key("your_api_key")?;
 /// let provider = SmsActivateProvider::new(client);
 ///
 /// // Optionally wrap with retry logic
-/// let retryable = RetryableProvider::new(provider);
+/// let retryable = SmsRetryableProvider::new(provider);
 ///
 /// // Create service
-/// let service = SmsService::with_provider(retryable);
+/// let service = SmsSolverService::with_provider(retryable);
 ///
 /// // Get phone number for WhatsApp
-/// let (task_id, number) = provider.get_phone_number(CountryCode::USA, Service::Whatsapp).await?;
+/// let (task_id, number) = provider.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
 ///
 /// // Use the same provider for Instagram
-/// let (task_id2, number2) = provider.get_phone_number(CountryCode::DEU, Service::InstagramThreads).await?;
+/// let (task_id2, number2) = provider.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
 /// ```
 #[derive(Debug, Clone)]
 pub struct SmsActivateProvider {
@@ -99,12 +99,12 @@ impl Provider for SmsActivateProvider {
         tracing::instrument(
             name = "SmsActivateProvider::get_phone_number",
             skip_all,
-            fields(service = %service.code(), country = %country.alpha2())
+            fields(service = %service.code(), country = %country.iso_short_name())
         )
     )]
     async fn get_phone_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Self::Service,
     ) -> Result<(TaskId, FullNumber)> {
         let response = self.client.get_phone_number(country, service).await?;
@@ -163,9 +163,9 @@ impl Provider for SmsActivateProvider {
         true
     }
 
-    fn available_countries(&self, _service: &Self::Service) -> Vec<CountryCode> {
+    fn available_countries(&self, _service: &Self::Service) -> Vec<Country> {
         // Return all countries that have SMS Activate mapping
-        CC2SMS_ID.keys().copied().collect()
+        SMS_ID2COUNTRY.values().cloned().collect()
     }
 
     fn supported_services(&self) -> Vec<Self::Service> {
@@ -176,6 +176,7 @@ impl Provider for SmsActivateProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use keshvar::Alpha2;
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -207,7 +208,7 @@ mod tests {
 
         let provider = create_test_provider(&mock_server);
         let result = provider
-            .get_phone_number(CountryCode::UKR, Service::InstagramThreads)
+            .get_phone_number(Alpha2::UA.to_country(), Service::InstagramThreads)
             .await;
 
         assert!(result.is_ok());
@@ -309,8 +310,8 @@ mod tests {
 
         let countries = provider.available_countries(&Service::Whatsapp);
         assert!(!countries.is_empty());
-        assert!(countries.contains(&CountryCode::USA));
-        assert!(countries.contains(&CountryCode::UKR));
+        assert!(countries.iter().any(|c| c.alpha2() == Alpha2::US));
+        assert!(countries.iter().any(|c| c.alpha2() == Alpha2::UA));
     }
 
     #[test]

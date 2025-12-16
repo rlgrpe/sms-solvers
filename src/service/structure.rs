@@ -6,7 +6,7 @@ use super::traits::SmsSolverServiceTrait;
 use crate::errors::RetryableError;
 use crate::providers::traits::Provider;
 use crate::types::{Number, SmsCode, SmsTaskResult, TaskId};
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Display};
 use std::time::Instant;
@@ -100,10 +100,9 @@ impl ServiceMetrics {
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait};
+/// use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait, Alpha2};
 /// use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
 /// use std::time::Duration;
-/// use isocountry::CountryCode;
 ///
 /// // Create provider and service
 /// let client = SmsActivateClient::with_api_key("api_key")?;
@@ -112,7 +111,7 @@ impl ServiceMetrics {
 /// let service = SmsSolverService::new(provider, config);
 ///
 /// // Get a phone number for WhatsApp
-/// let result = service.get_number(CountryCode::USA, Service::Whatsapp).await?;
+/// let result = service.get_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
 /// println!("Got number: {} (task_id: {})", result.full_number, result.task_id);
 ///
 /// // Wait for SMS code
@@ -247,34 +246,37 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "sms_solver.get_number",
+            name = "SmsSolverService::get_number",
             skip_all,
-            fields(country = %country)
+            fields(country = %country.iso_short_name())
         )
     )]
     async fn get_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Self::Service,
     ) -> Result<SmsTaskResult, Self::Error> {
         #[cfg(feature = "tracing")]
         debug!("Requesting phone number");
 
         #[cfg(feature = "metrics")]
+        let country_alpha2 = country.alpha2().to_string();
+
+        #[cfg(feature = "metrics")]
         ServiceMetrics::global()
             .numbers_requested
-            .add(1, &[KeyValue::new("country", country.alpha2().to_string())]);
+            .add(1, &[KeyValue::new("country", country_alpha2.clone())]);
 
         let (task_id, full_number) = self
             .provider
-            .get_phone_number(country, service)
+            .get_phone_number(country.clone(), service)
             .await
             .map_err(|e| {
                 #[cfg(feature = "metrics")]
                 ServiceMetrics::global().errors.add(
                     1,
                     &[
-                        KeyValue::new("country", country.alpha2().to_string()),
+                        KeyValue::new("country", country_alpha2.clone()),
                         KeyValue::new("operation", "get_number"),
                     ],
                 );
@@ -287,11 +289,7 @@ where
                 }
             })?;
 
-        let dial_code =
-            DialCode::try_from(country).map_err(|_| SmsSolverServiceError::InvalidDialCode {
-                dial_code: "unknown".to_string(),
-                country,
-            })?;
+        let dial_code = DialCode::from(&country);
 
         // Check if the dial code is blacklisted
         if !self.provider.is_dial_code_supported(&dial_code) {
@@ -322,7 +320,7 @@ where
         info!(
             task_id = %task_id,
             dial_code = %dial_code,
-            country = %country.alpha2(),
+            country = %country.iso_short_name(),
             "Phone number acquired"
         );
 
@@ -338,7 +336,7 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "sms_solver.wait_for_code",
+            name = "SmsSolverService::wait_for_sms_code",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -351,7 +349,7 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "sms_solver.wait_for_code_cancellable",
+            name = "SmsSolverService::wait_for_sms_code_cancellable",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -607,6 +605,7 @@ mod tests {
     use super::*;
     use crate::errors::RetryableError;
     use crate::types::FullNumber;
+    use keshvar::Alpha2;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
@@ -684,7 +683,7 @@ mod tests {
 
         async fn get_phone_number(
             &self,
-            _country: CountryCode,
+            _country: Country,
             _service: Self::Service,
         ) -> Result<(TaskId, FullNumber), Self::Error> {
             self.get_number_result
@@ -723,7 +722,7 @@ mod tests {
         let service = SmsSolverService::new(provider.clone(), config);
 
         let result = service
-            .get_number(CountryCode::UKR, MockService)
+            .get_number(Alpha2::UA.to_country(), MockService)
             .await
             .unwrap();
         assert_eq!(result.task_id.as_ref(), "task123");
@@ -750,7 +749,7 @@ mod tests {
         let service = SmsSolverService::new(provider, config);
 
         let result = service
-            .get_number(CountryCode::UKR, MockService)
+            .get_number(Alpha2::UA.to_country(), MockService)
             .await
             .unwrap();
 
@@ -788,7 +787,7 @@ mod tests {
         let service = SmsSolverService::new(provider, config);
 
         let result = service
-            .get_number(CountryCode::UKR, MockService)
+            .get_number(Alpha2::UA.to_country(), MockService)
             .await
             .unwrap();
 
@@ -830,7 +829,7 @@ mod tests {
         let service = SmsSolverService::new(provider, config);
 
         let result = service
-            .get_number(CountryCode::UKR, MockService)
+            .get_number(Alpha2::UA.to_country(), MockService)
             .await
             .unwrap();
 

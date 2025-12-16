@@ -1,7 +1,6 @@
 //! Core types for SMS verification operations.
 
-use crate::utils::dial_code::country_to_dial_code;
-use isocountry::CountryCode;
+use keshvar::Country;
 use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{self, Display, Formatter};
@@ -269,14 +268,79 @@ impl Serialize for DialCode {
     }
 }
 
-impl TryFrom<CountryCode> for DialCode {
-    type Error = DialCodeError;
+/// Error when converting a dial code to a country.
+#[derive(Debug, Clone, Error)]
+pub enum DialCodeToCountryError {
+    /// No country found for the given dial code.
+    #[error("no country found for dial code '{dial_code}'")]
+    NotFound { dial_code: String },
+    /// Invalid dial code format (not a valid number).
+    #[error("invalid dial code format: '{dial_code}'")]
+    InvalidFormat { dial_code: String },
+}
 
-    fn try_from(country: CountryCode) -> Result<Self, Self::Error> {
-        match country_to_dial_code(country) {
-            Some(dc) => Ok(dc),
-            None => Err(DialCodeError::Empty),
-        }
+impl From<&Country> for DialCode {
+    /// Convert a Country to its dial code.
+    ///
+    /// # Panics
+    ///
+    /// This should never panic as keshvar provides valid country codes.
+    fn from(country: &Country) -> Self {
+        DialCode::new(country.country_code().to_string())
+            .expect("keshvar country codes are always valid")
+    }
+}
+
+impl From<Country> for DialCode {
+    fn from(country: Country) -> Self {
+        DialCode::from(&country)
+    }
+}
+
+impl TryFrom<&DialCode> for Country {
+    type Error = DialCodeToCountryError;
+
+    /// Convert a dial code to a Country.
+    ///
+    /// Uses keshvar's `find_by_code` function for lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no country is found for the given dial code
+    /// or if the dial code is not a valid number.
+    fn try_from(dial_code: &DialCode) -> Result<Self, Self::Error> {
+        let code: usize =
+            dial_code
+                .as_str()
+                .parse()
+                .map_err(|_| DialCodeToCountryError::InvalidFormat {
+                    dial_code: dial_code.to_string(),
+                })?;
+
+        keshvar::find_by_code(code).map_err(|_| DialCodeToCountryError::NotFound {
+            dial_code: dial_code.to_string(),
+        })
+    }
+}
+
+impl TryFrom<DialCode> for Country {
+    type Error = DialCodeToCountryError;
+
+    fn try_from(dial_code: DialCode) -> Result<Self, Self::Error> {
+        Country::try_from(&dial_code)
+    }
+}
+
+impl DialCode {
+    /// Try to convert this dial code to a Country.
+    ///
+    /// Uses keshvar's built-in country code lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no country is found for the given dial code.
+    pub fn to_country(&self) -> Result<Country, DialCodeToCountryError> {
+        Country::try_from(self)
     }
 }
 
@@ -405,8 +469,8 @@ pub struct SmsTaskResult {
     pub number: Number,
     /// Full phone number with dial code.
     pub full_number: FullNumber,
-    /// Country code.
-    pub country: CountryCode,
+    /// Country.
+    pub country: Country,
 }
 
 #[cfg(test)]
@@ -551,5 +615,367 @@ mod tests {
             Number::from_full_number(&full, &dial_code),
             Err(NumberError::MissingDialCode)
         ));
+    }
+
+    use keshvar::Alpha2;
+
+    #[test]
+    fn test_country_to_dial_code() {
+        assert_eq!(DialCode::from(Alpha2::US.to_country()).to_string(), "1");
+        assert_eq!(DialCode::from(Alpha2::UA.to_country()).to_string(), "380");
+        assert_eq!(DialCode::from(Alpha2::GB.to_country()).to_string(), "44");
+        assert_eq!(DialCode::from(Alpha2::TR.to_country()).to_string(), "90");
+    }
+
+    #[test]
+    fn test_country_ref_to_dial_code() {
+        let country = Alpha2::DE.to_country();
+        let dial_code = DialCode::from(&country);
+        assert_eq!(dial_code.to_string(), "49");
+    }
+
+    #[test]
+    fn test_dial_code_to_country() {
+        // Test unique dial codes
+        let dc = DialCode::new("380").unwrap();
+        let country = Country::try_from(&dc).unwrap();
+        assert_eq!(country.alpha2(), Alpha2::UA);
+
+        let dc = DialCode::new("49").unwrap();
+        let country = Country::try_from(&dc).unwrap();
+        assert_eq!(country.alpha2(), Alpha2::DE);
+
+        // +44 is shared by multiple countries (GB, JE, GG, IM)
+        // Just verify we get a country with dial code 44
+        let dc = DialCode::new("44").unwrap();
+        let country = Country::try_from(&dc).unwrap();
+        assert_eq!(country.country_code(), 44);
+    }
+
+    #[test]
+    fn test_dial_code_to_country_us() {
+        let dc = DialCode::new("1").unwrap();
+        let country = Country::try_from(&dc).unwrap();
+        // keshvar's find_by_code returns a country for dial code 1
+        assert_eq!(country.country_code(), 1);
+    }
+
+    #[test]
+    fn test_dial_code_to_country_not_found() {
+        let dc = DialCode::new("99999").unwrap();
+        let result = Country::try_from(&dc);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("99999"));
+    }
+
+    #[test]
+    fn test_dial_code_to_country_method() {
+        let dc = DialCode::new("33").unwrap();
+        let country = dc.to_country().unwrap();
+        assert_eq!(country.alpha2(), Alpha2::FR);
+    }
+
+    #[test]
+    fn test_round_trip_conversion() {
+        let countries = [
+            Alpha2::UA,
+            Alpha2::GB,
+            Alpha2::DE,
+            Alpha2::FR,
+            Alpha2::JP,
+            Alpha2::AU,
+            Alpha2::BR,
+            Alpha2::IN,
+        ];
+
+        for alpha2 in countries {
+            let original = alpha2.to_country();
+            let dial_code = DialCode::from(&original);
+            let converted = Country::try_from(&dial_code).unwrap();
+            // Compare dial codes since some dial codes are shared
+            assert_eq!(
+                original.country_code(),
+                converted.country_code(),
+                "Round-trip failed for {:?}",
+                alpha2
+            );
+        }
+    }
+
+    // =========================================================================
+    // Comprehensive Country <-> DialCode conversion tests
+    // =========================================================================
+
+    #[test]
+    fn test_all_countries_to_dial_code() {
+        use keshvar::SUPPORTED_ALPHA2_LIST;
+
+        // Test that every supported country can be converted to a dial code
+        for alpha2 in SUPPORTED_ALPHA2_LIST {
+            let country = alpha2.to_country();
+            let dial_code = DialCode::from(&country);
+
+            // Verify dial code is valid (non-empty, digits only)
+            assert!(
+                !dial_code.as_str().is_empty(),
+                "Empty dial code for {:?}",
+                alpha2
+            );
+            assert!(
+                dial_code.as_str().chars().all(|c| c.is_ascii_digit()),
+                "Non-digit in dial code for {:?}: {}",
+                alpha2,
+                dial_code
+            );
+
+            // Verify it matches the country's country_code
+            assert_eq!(
+                dial_code.as_str(),
+                country.country_code().to_string(),
+                "Dial code mismatch for {:?}",
+                alpha2
+            );
+        }
+    }
+
+    #[test]
+    fn test_country_to_dial_code_owned_vs_ref() {
+        use keshvar::SUPPORTED_ALPHA2_LIST;
+
+        // Verify that From<Country> and From<&Country> produce the same result
+        for alpha2 in SUPPORTED_ALPHA2_LIST {
+            let country = alpha2.to_country();
+            let dial_code_from_ref = DialCode::from(&country);
+            let dial_code_from_owned = DialCode::from(alpha2.to_country());
+
+            assert_eq!(
+                dial_code_from_ref, dial_code_from_owned,
+                "Owned vs ref conversion mismatch for {:?}",
+                alpha2
+            );
+        }
+    }
+
+    #[test]
+    fn test_dial_code_to_country_common_codes() {
+        // Test common/unique dial codes that should reliably map to a country
+        let test_cases = [
+            ("1", 1),     // North America (US/CA)
+            ("7", 7),     // Russia/Kazakhstan
+            ("20", 20),   // Egypt
+            ("27", 27),   // South Africa
+            ("30", 30),   // Greece
+            ("31", 31),   // Netherlands
+            ("32", 32),   // Belgium
+            ("33", 33),   // France
+            ("34", 34),   // Spain
+            ("36", 36),   // Hungary
+            ("39", 39),   // Italy
+            ("40", 40),   // Romania
+            ("41", 41),   // Switzerland
+            ("43", 43),   // Austria
+            ("44", 44),   // UK
+            ("45", 45),   // Denmark
+            ("46", 46),   // Sweden
+            ("47", 47),   // Norway
+            ("48", 48),   // Poland
+            ("49", 49),   // Germany
+            ("51", 51),   // Peru
+            ("52", 52),   // Mexico
+            ("53", 53),   // Cuba
+            ("54", 54),   // Argentina
+            ("55", 55),   // Brazil
+            ("56", 56),   // Chile
+            ("57", 57),   // Colombia
+            ("58", 58),   // Venezuela
+            ("60", 60),   // Malaysia
+            ("61", 61),   // Australia
+            ("62", 62),   // Indonesia
+            ("63", 63),   // Philippines
+            ("64", 64),   // New Zealand
+            ("65", 65),   // Singapore
+            ("66", 66),   // Thailand
+            ("81", 81),   // Japan
+            ("82", 82),   // South Korea
+            ("84", 84),   // Vietnam
+            ("86", 86),   // China
+            ("90", 90),   // Turkey
+            ("91", 91),   // India
+            ("92", 92),   // Pakistan
+            ("93", 93),   // Afghanistan
+            ("94", 94),   // Sri Lanka
+            ("95", 95),   // Myanmar
+            ("98", 98),   // Iran
+            ("212", 212), // Morocco
+            ("213", 213), // Algeria
+            ("216", 216), // Tunisia
+            ("218", 218), // Libya
+            ("220", 220), // Gambia
+            ("221", 221), // Senegal
+            ("234", 234), // Nigeria
+            ("254", 254), // Kenya
+            ("255", 255), // Tanzania
+            ("256", 256), // Uganda
+            ("260", 260), // Zambia
+            ("263", 263), // Zimbabwe
+            ("351", 351), // Portugal
+            ("352", 352), // Luxembourg
+            ("353", 353), // Ireland
+            ("354", 354), // Iceland
+            ("358", 358), // Finland
+            ("370", 370), // Lithuania
+            ("371", 371), // Latvia
+            ("372", 372), // Estonia
+            ("373", 373), // Moldova
+            ("374", 374), // Armenia
+            ("375", 375), // Belarus
+            ("376", 376), // Andorra
+            ("380", 380), // Ukraine
+            ("381", 381), // Serbia
+            ("385", 385), // Croatia
+            ("386", 386), // Slovenia
+            ("420", 420), // Czech Republic
+            ("421", 421), // Slovakia
+            ("852", 852), // Hong Kong
+            ("853", 853), // Macau
+            ("886", 886), // Taiwan
+            ("961", 961), // Lebanon
+            ("962", 962), // Jordan
+            ("963", 963), // Syria
+            ("964", 964), // Iraq
+            ("965", 965), // Kuwait
+            ("966", 966), // Saudi Arabia
+            ("971", 971), // UAE
+            ("972", 972), // Israel
+            ("974", 974), // Qatar
+        ];
+
+        for (dial_code_str, expected_country_code) in test_cases {
+            let dial_code = DialCode::new(dial_code_str).unwrap();
+            let country_result = Country::try_from(&dial_code);
+
+            assert!(
+                country_result.is_ok(),
+                "Failed to convert dial code {} to country",
+                dial_code_str
+            );
+
+            let country = country_result.unwrap();
+            assert_eq!(
+                country.country_code(),
+                expected_country_code,
+                "Country code mismatch for dial code {}",
+                dial_code_str
+            );
+        }
+    }
+
+    #[test]
+    fn test_dial_code_to_country_owned_vs_ref() {
+        // Verify that TryFrom<DialCode> and TryFrom<&DialCode> produce the same result
+        let test_codes = ["1", "44", "49", "81", "86", "91", "380", "420"];
+
+        for code_str in test_codes {
+            let dial_code = DialCode::new(code_str).unwrap();
+            let country_from_ref = Country::try_from(&dial_code).unwrap();
+            let country_from_owned = Country::try_from(dial_code).unwrap();
+
+            assert_eq!(
+                country_from_ref.alpha2(),
+                country_from_owned.alpha2(),
+                "Owned vs ref conversion mismatch for dial code {}",
+                code_str
+            );
+        }
+    }
+
+    #[test]
+    fn test_dial_code_to_country_invalid_codes() {
+        // Test dial codes that don't correspond to any country
+        let invalid_codes = ["0", "99999", "12345", "999"];
+
+        for code_str in invalid_codes {
+            let dial_code = DialCode::new(code_str).unwrap();
+            let result = Country::try_from(&dial_code);
+
+            assert!(
+                result.is_err(),
+                "Expected error for invalid dial code {}, got {:?}",
+                code_str,
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_countries_round_trip() {
+        use keshvar::SUPPORTED_ALPHA2_LIST;
+
+        // Test round-trip conversion for all supported countries
+        // Country -> DialCode -> Country should preserve the dial code
+        let mut successful = 0;
+        let mut failed_lookups = Vec::new();
+
+        for alpha2 in SUPPORTED_ALPHA2_LIST {
+            let original = alpha2.to_country();
+            let dial_code = DialCode::from(&original);
+
+            match Country::try_from(&dial_code) {
+                Ok(converted) => {
+                    // The converted country should have the same dial code
+                    assert_eq!(
+                        original.country_code(),
+                        converted.country_code(),
+                        "Round-trip dial code mismatch for {:?}",
+                        alpha2
+                    );
+                    successful += 1;
+                }
+                Err(_) => {
+                    // Some dial codes might not be found (edge cases)
+                    failed_lookups.push((alpha2, dial_code.to_string()));
+                }
+            }
+        }
+
+        // Most countries should round-trip successfully
+        assert!(
+            successful > 200,
+            "Too few successful round-trips: {} (failed: {:?})",
+            successful,
+            failed_lookups
+        );
+    }
+
+    #[test]
+    fn test_dial_code_to_country_method_consistency() {
+        // Verify that dial_code.to_country() and Country::try_from(&dial_code) are consistent
+        let test_codes = ["33", "49", "81", "380", "1", "44"];
+
+        for code_str in test_codes {
+            let dial_code = DialCode::new(code_str).unwrap();
+            let via_method = dial_code.to_country();
+            let via_try_from = Country::try_from(&dial_code);
+
+            match (via_method, via_try_from) {
+                (Ok(c1), Ok(c2)) => {
+                    assert_eq!(
+                        c1.alpha2(),
+                        c2.alpha2(),
+                        "Method vs TryFrom mismatch for {}",
+                        code_str
+                    );
+                }
+                (Err(_), Err(_)) => {
+                    // Both failed, which is consistent
+                }
+                (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                    panic!(
+                        "Inconsistent results for dial code {}: method and TryFrom differ",
+                        code_str
+                    );
+                }
+            }
+        }
     }
 }

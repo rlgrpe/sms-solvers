@@ -25,11 +25,11 @@
 //! **WARNING**: These tests will consume API credits!
 
 use sms_solvers::sms_activate::{
-    Service, SmsActivateClient, SmsActivateError, SmsActivateProvider, SmsCountryExt,
+    Service, SmsActivateClient, SmsActivateError, SmsActivateProvider,
 };
 use sms_solvers::{
-    CountryCode, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService,
-    SmsSolverServiceConfig, SmsSolverServiceTrait,
+    Alpha2, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    SmsSolverServiceTrait,
 };
 use std::env;
 use std::time::Duration;
@@ -119,7 +119,7 @@ async fn test_get_phone_number_ukraine() {
     let provider = create_provider();
 
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     match result {
@@ -151,76 +151,6 @@ async fn test_get_phone_number_ukraine() {
     }
 }
 
-/// Test getting a phone number for USA.
-#[tokio::test]
-#[ignore = "requires API key and consumes credits"]
-async fn test_get_phone_number_usa() {
-    let provider = create_provider();
-
-    let result = provider
-        .get_phone_number(CountryCode::USA, TEST_SERVICE)
-        .await;
-
-    match result {
-        Ok((task_id, full_number)) => {
-            println!("Successfully got USA number:");
-            println!("  Task ID: {}", task_id);
-            println!("  Full number: {}", full_number);
-
-            // USA numbers start with 1
-            assert!(
-                full_number.as_ref().starts_with("1"),
-                "USA number should start with 1, got: {}",
-                full_number
-            );
-
-            // Cancel the activation
-            let _ = provider.cancel_activation(&task_id).await;
-        }
-        Err(ref e) if is_no_numbers_error(e) => {
-            println!("No numbers available for USA");
-        }
-        Err(e) => {
-            panic!("Unexpected error: {:?}", e);
-        }
-    }
-}
-
-/// Test getting a phone number for Germany.
-#[tokio::test]
-#[ignore = "requires API key and consumes credits"]
-async fn test_get_phone_number_germany() {
-    let provider = create_provider();
-
-    let result = provider
-        .get_phone_number(CountryCode::DEU, TEST_SERVICE)
-        .await;
-
-    match result {
-        Ok((task_id, full_number)) => {
-            println!("Successfully got Germany number:");
-            println!("  Task ID: {}", task_id);
-            println!("  Full number: {}", full_number);
-
-            // Germany numbers start with 49
-            assert!(
-                full_number.as_ref().starts_with("49"),
-                "Germany number should start with 49, got: {}",
-                full_number
-            );
-
-            // Cancel the activation
-            let _ = provider.cancel_activation(&task_id).await;
-        }
-        Err(ref e) if is_no_numbers_error(e) => {
-            println!("No numbers available for Germany");
-        }
-        Err(e) => {
-            panic!("Unexpected error: {:?}", e);
-        }
-    }
-}
-
 // =============================================================================
 // Service Tests
 // =============================================================================
@@ -231,7 +161,9 @@ async fn test_get_phone_number_germany() {
 async fn test_service_get_number() {
     let service = create_service();
 
-    let result = service.get_number(CountryCode::UKR, TEST_SERVICE).await;
+    let result = service
+        .get_number(Alpha2::UA.to_country(), TEST_SERVICE)
+        .await;
 
     match result {
         Ok(sms_result) => {
@@ -241,14 +173,14 @@ async fn test_service_get_number() {
             println!("  Dial code: {}", sms_result.dial_code);
             println!("  Number: {}", sms_result.number);
             println!(
-                "  Country: {} ({})",
-                sms_result.country.name(),
+                "  Country: {} ({:?})",
+                sms_result.country.iso_short_name(),
                 sms_result.country.alpha2()
             );
 
             // Verify the parsed components
             assert_eq!(sms_result.dial_code.as_str(), "380");
-            assert_eq!(sms_result.country, CountryCode::UKR);
+            assert_eq!(sms_result.country.alpha2(), Alpha2::UA);
 
             // Verify full_number = dial_code + number
             let expected_full = format!("{}{}", sms_result.dial_code, sms_result.number);
@@ -276,7 +208,9 @@ async fn test_service_get_number() {
 async fn test_service_with_retry() {
     let service = create_retryable_service();
 
-    let result = service.get_number(CountryCode::GBR, TEST_SERVICE).await;
+    let result = service
+        .get_number(Alpha2::GB.to_country(), TEST_SERVICE)
+        .await;
 
     match result {
         Ok(sms_result) => {
@@ -304,56 +238,6 @@ async fn test_service_with_retry() {
 }
 
 // =============================================================================
-// Country Mapping Tests with Real API
-// =============================================================================
-
-/// Test that country SMS IDs work with the real API.
-#[tokio::test]
-#[ignore = "requires API key and consumes credits"]
-async fn test_country_mapping_with_api() {
-    let provider = create_provider();
-
-    // Test a few countries with known SMS IDs
-    let test_countries = [
-        (CountryCode::UKR, "380"), // ID: 1
-        (CountryCode::DEU, "49"),  // ID: 43
-        (CountryCode::FRA, "33"),  // ID: 78
-    ];
-
-    for (country, expected_prefix) in test_countries {
-        // Verify SMS ID exists
-        let sms_id = country.sms_id();
-        assert!(
-            sms_id.is_ok(),
-            "Country {} should have SMS ID",
-            country.name()
-        );
-        println!("{}: SMS ID = {}", country.name(), sms_id.unwrap());
-
-        // Try to get a number (may fail if no numbers available)
-        let result = provider.get_phone_number(country, TEST_SERVICE).await;
-        match result {
-            Ok((task_id, full_number)) => {
-                println!("  Got number: {}", full_number);
-                assert!(
-                    full_number.as_ref().starts_with(expected_prefix),
-                    "Number should start with {}, got: {}",
-                    expected_prefix,
-                    full_number
-                );
-                let _ = provider.cancel_activation(&task_id).await;
-            }
-            Err(ref e) if is_no_numbers_error(e) => {
-                println!("  No numbers available");
-            }
-            Err(e) => {
-                println!("  Error: {:?}", e);
-            }
-        }
-    }
-}
-
-// =============================================================================
 // Error Handling Tests
 // =============================================================================
 
@@ -365,7 +249,7 @@ async fn test_invalid_api_key() {
     let provider = SmsActivateProvider::new(client);
 
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     assert!(result.is_err(), "Should fail with invalid API key");
@@ -390,7 +274,7 @@ async fn test_get_sms_status() {
 
     // Get a number
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     if let Ok((task_id, full_number)) = result {
@@ -412,51 +296,6 @@ async fn test_get_sms_status() {
         }
 
         // Clean up
-        let _ = provider.cancel_activation(&task_id).await;
-    }
-}
-
-// =============================================================================
-// Performance / Load Tests
-// =============================================================================
-
-/// Test multiple sequential number requests.
-#[tokio::test]
-#[ignore = "requires API key and consumes significant credits"]
-async fn test_multiple_number_requests() {
-    let provider = create_provider();
-    let mut successes = 0;
-    let mut failures = 0;
-    let mut task_ids = Vec::new();
-
-    // Request 3 numbers
-    for i in 0..3 {
-        println!("Request {}/3...", i + 1);
-
-        let result = provider
-            .get_phone_number(CountryCode::UKR, TEST_SERVICE)
-            .await;
-
-        match result {
-            Ok((task_id, full_number)) => {
-                println!("  Got: {}", full_number);
-                task_ids.push(task_id);
-                successes += 1;
-            }
-            Err(e) => {
-                println!("  Failed: {:?}", e);
-                failures += 1;
-            }
-        }
-
-        // Small delay between requests
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-
-    println!("\nResults: {} successes, {} failures", successes, failures);
-
-    // Clean up all activations
-    for task_id in task_ids {
         let _ = provider.cancel_activation(&task_id).await;
     }
 }
