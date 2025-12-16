@@ -33,7 +33,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 serde_urlencoded = "0.7"
 
 # Country codes
-isocountry = "0.3"
+keshvar = { version = "0.5", features = ["search-country-code"] }
 
 # Retry logic
 backon = "1.5"

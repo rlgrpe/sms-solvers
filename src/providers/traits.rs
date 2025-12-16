@@ -2,7 +2,7 @@
 
 use crate::errors::RetryableError;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::error::Error as StdError;
 use std::future::Future;
 
@@ -27,8 +27,7 @@ use std::future::Future;
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::{Provider, TaskId, FullNumber, SmsCode};
-/// use isocountry::CountryCode;
+/// use sms_solvers::{Provider, TaskId, FullNumber, SmsCode, Country};
 ///
 /// #[derive(Clone)]
 /// struct MyProvider { /* ... */ }
@@ -40,7 +39,7 @@ use std::future::Future;
 ///     type Error = MyError;
 ///     type Service = MyService;
 ///
-///     async fn get_phone_number(&self, country: CountryCode, service: Self::Service) -> Result<(TaskId, FullNumber), Self::Error> {
+///     async fn get_phone_number(&self, country: Country, service: Self::Service) -> Result<(TaskId, FullNumber), Self::Error> {
 ///         // Get a phone number from the provider for the specified service
 ///     }
 ///
@@ -69,7 +68,7 @@ pub trait Provider: Send + Sync + Clone {
     /// Get a phone number for the specified country and service.
     ///
     /// # Arguments
-    /// * `country` - ISO country code for the desired phone number
+    /// * `country` - Country for the desired phone number
     /// * `service` - The service to get a number for (e.g., WhatsApp verification)
     ///
     /// # Returns
@@ -77,7 +76,7 @@ pub trait Provider: Send + Sync + Clone {
     /// * `full_number` - The full phone number with country code
     fn get_phone_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Self::Service,
     ) -> impl Future<Output = Result<(TaskId, FullNumber), Self::Error>> + Send;
 
@@ -137,7 +136,7 @@ pub trait Provider: Send + Sync + Clone {
 
     /// Get the list of countries where the given service is available.
     ///
-    /// This method returns a list of ISO country codes where phone numbers
+    /// This method returns a list of countries where phone numbers
     /// can be acquired for the specified service.
     ///
     /// Default implementation returns an empty list, indicating that
@@ -146,7 +145,7 @@ pub trait Provider: Send + Sync + Clone {
     ///
     /// Providers can override this to provide a static or dynamic list
     /// of supported countries.
-    fn available_countries(&self, service: &Self::Service) -> Vec<CountryCode> {
+    fn available_countries(&self, service: &Self::Service) -> Vec<Country> {
         let _ = service;
         Vec::new()
     }

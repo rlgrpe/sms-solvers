@@ -1,6 +1,6 @@
 //! Country code mapping for SMS Activate API.
 
-use isocountry::CountryCode;
+use keshvar::{Alpha2, Country, CountryIterator};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -10,11 +10,11 @@ use thiserror::Error;
 #[derive(Debug, Clone, Error)]
 pub enum CountryMapError {
     /// Unknown SMS-Activate ID.
-    #[error("Unknown ISO country for SMS-Activate id {id}")]
+    #[error("Unknown country for SMS-Activate id {id}")]
     UnknownSmsId { id: u16 },
     /// No SMS-Activate mapping for country.
-    #[error("No SMS-Activate mapping for country {}", code.alpha2())]
-    NoSmsMapping { code: CountryCode },
+    #[error("No SMS-Activate mapping for country {}", country.iso_short_name())]
+    NoSmsMapping { country: Box<Country> },
 }
 
 /// SMS Activate countries JSON embedded at compile time.
@@ -35,65 +35,66 @@ fn norm(s: &str) -> String {
         .join(" ")
 }
 
-/// Overrides: normalized SMS name -> ISO CountryCode
+/// Overrides: normalized SMS name -> ISO alpha-2 code
 /// Used where SMS-Activate names differ significantly from ISO standard names.
-static NAME_OVERRIDES: Lazy<HashMap<&'static str, CountryCode>> = Lazy::new(|| {
-    use CountryCode::*;
+static NAME_OVERRIDES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     HashMap::from([
         // Primary mappings
-        ("usa", USA),
-        ("united states", USA),
-        ("united kingdom", GBR),
-        ("uae", ARE),
+        ("usa", "US"),
+        ("united states", "US"),
+        ("united kingdom", "GB"),
+        ("uae", "AE"),
         // Name differences
-        ("vietnam", VNM),
-        ("south korea", KOR),
-        ("north korea", PRK),
-        ("dr congo", COD),
-        ("ivory coast", CIV),
-        ("czech", CZE),
-        ("moldova", MDA),
-        ("laos", LAO),
-        ("syria", SYR),
-        ("iran", IRN),
-        ("venezuela", VEN),
-        ("tanzania", TZA),
-        ("bolivia", BOL),
-        ("bosnia", BIH),
-        ("brunei", BRN),
-        ("palestine", PSE),
-        ("taiwan", TWN),
+        ("vietnam", "VN"),
+        ("south korea", "KR"),
+        ("north korea", "KP"),
+        ("dr congo", "CD"),
+        ("ivory coast", "CI"),
+        ("czech", "CZ"),
+        ("moldova", "MD"),
+        ("laos", "LA"),
+        ("syria", "SY"),
+        ("iran", "IR"),
+        ("venezuela", "VE"),
+        ("tanzania", "TZ"),
+        ("bolivia", "BO"),
+        ("bosnia", "BA"),
+        ("brunei", "BN"),
+        ("palestine", "PS"),
+        ("taiwan", "TW"),
         // Alternative/old names
-        ("swaziland", SWZ),
-        ("cape verde", CPV),
-        ("north macedonia", MKD),
-        ("timor leste", TLS),
-        ("timorleste", TLS),
+        ("swaziland", "SZ"),
+        ("cape verde", "CV"),
+        ("north macedonia", "MK"),
+        ("timor leste", "TL"),
+        ("timorleste", "TL"),
         // Abbreviations
-        ("salvador", SLV),
-        ("papua", PNG),
+        ("salvador", "SV"),
+        ("papua", "PG"),
         // Diacritics removed
-        ("reunion", REU),
+        ("reunion", "RE"),
         // Region codes
-        ("hong kong", HKG),
-        ("macao", MAC),
-        ("puerto rico", PRI),
+        ("hong kong", "HK"),
+        ("macao", "MO"),
+        ("puerto rico", "PR"),
+        // Name changes
+        ("turkey", "TR"),
     ])
 });
 
-/// ISO standard names: normalized ISO name() -> CountryCode
-/// Built from isocountry at startup.
-static ISO_NAME2CC: Lazy<HashMap<String, CountryCode>> = Lazy::new(|| {
+/// ISO standard names: normalized ISO name -> Alpha2
+/// Built from keshvar at startup.
+static ISO_NAME2ALPHA2: Lazy<HashMap<String, Alpha2>> = Lazy::new(|| {
     let mut m = HashMap::new();
-    for cc in CountryCode::iter() {
-        m.insert(norm(cc.name()), *cc);
+    for country in CountryIterator::new() {
+        m.insert(norm(country.iso_short_name()), country.alpha2());
     }
     m
 });
 
-/// Mapping from SMS Activate country IDs to ISO CountryCode.
+/// Mapping from SMS Activate country IDs to Country.
 /// Built from sms_activate_countries.json at startup.
-pub static SMS_ID2CC: Lazy<HashMap<u16, CountryCode>> = Lazy::new(|| {
+pub static SMS_ID2COUNTRY: Lazy<HashMap<u16, Country>> = Lazy::new(|| {
     let raw: HashMap<String, Value> =
         serde_json::from_str(COUNTRIES_JSON).expect("sms_activate_countries.json is invalid");
 
@@ -110,14 +111,16 @@ pub static SMS_ID2CC: Lazy<HashMap<u16, CountryCode>> = Lazy::new(|| {
         let key = norm(name);
 
         // 1) First check overrides for known name differences
-        if let Some(&cc) = NAME_OVERRIDES.get(key.as_str()) {
-            map.insert(id, cc);
+        if let Some(&alpha2_str) = NAME_OVERRIDES.get(key.as_str())
+            && let Ok(country) = Country::try_from(alpha2_str)
+        {
+            map.insert(id, country);
             continue;
         }
 
         // 2) Try to match against ISO standard name()
-        if let Some(&cc) = ISO_NAME2CC.get(&key) {
-            map.insert(id, cc);
+        if let Some(&alpha2) = ISO_NAME2ALPHA2.get(&key) {
+            map.insert(id, alpha2.to_country());
             continue;
         }
 
@@ -129,11 +132,11 @@ pub static SMS_ID2CC: Lazy<HashMap<u16, CountryCode>> = Lazy::new(|| {
     map
 });
 
-/// Reverse mapping: CountryCode -> SMS Activate ID.
-pub static CC2SMS_ID: Lazy<HashMap<CountryCode, u16>> = Lazy::new(|| {
-    let mut m = HashMap::with_capacity(SMS_ID2CC.len());
-    for (id, cc) in SMS_ID2CC.iter() {
-        m.entry(*cc).or_insert(*id);
+/// Reverse mapping: Alpha2 string -> SMS Activate ID.
+pub static COUNTRY2SMS_ID: Lazy<HashMap<String, u16>> = Lazy::new(|| {
+    let mut m = HashMap::with_capacity(SMS_ID2COUNTRY.len());
+    for (id, country) in SMS_ID2COUNTRY.iter() {
+        m.entry(country.alpha2().to_string()).or_insert(*id);
     }
     m
 });
@@ -143,23 +146,24 @@ pub trait SmsCountryExt {
     /// Get the SMS Activate country ID for this country.
     fn sms_id(&self) -> Result<u16, CountryMapError>;
 
-    /// Get the ISO country code for an SMS Activate ID.
-    #[allow(dead_code)]
-    fn from_sms_id(id: u16) -> Result<CountryCode, CountryMapError>;
+    /// Get the Country for an SMS Activate ID.
+    fn from_sms_id(id: u16) -> Result<Country, CountryMapError>;
 }
 
-impl SmsCountryExt for CountryCode {
+impl SmsCountryExt for Country {
     fn sms_id(&self) -> Result<u16, CountryMapError> {
-        CC2SMS_ID
-            .get(self)
+        COUNTRY2SMS_ID
+            .get(&self.alpha2().to_string())
             .copied()
-            .ok_or(CountryMapError::NoSmsMapping { code: *self })
+            .ok_or_else(|| CountryMapError::NoSmsMapping {
+                country: Box::new(self.clone()),
+            })
     }
 
-    fn from_sms_id(id: u16) -> Result<CountryCode, CountryMapError> {
-        SMS_ID2CC
+    fn from_sms_id(id: u16) -> Result<Country, CountryMapError> {
+        SMS_ID2COUNTRY
             .get(&id)
-            .copied()
+            .cloned()
             .ok_or(CountryMapError::UnknownSmsId { id })
     }
 }
@@ -167,6 +171,7 @@ impl SmsCountryExt for CountryCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use keshvar::Alpha2;
 
     #[test]
     fn test_norm_basic() {
@@ -199,99 +204,99 @@ mod tests {
 
     #[test]
     fn test_name_overrides_correct() {
-        assert_eq!(NAME_OVERRIDES.get("usa"), Some(&CountryCode::USA));
-        assert_eq!(
-            NAME_OVERRIDES.get("united kingdom"),
-            Some(&CountryCode::GBR)
-        );
-        assert_eq!(NAME_OVERRIDES.get("uae"), Some(&CountryCode::ARE));
-        assert_eq!(NAME_OVERRIDES.get("ivory coast"), Some(&CountryCode::CIV));
+        assert_eq!(NAME_OVERRIDES.get("usa"), Some(&"US"));
+        assert_eq!(NAME_OVERRIDES.get("united kingdom"), Some(&"GB"));
+        assert_eq!(NAME_OVERRIDES.get("uae"), Some(&"AE"));
+        assert_eq!(NAME_OVERRIDES.get("ivory coast"), Some(&"CI"));
     }
 
     #[test]
-    fn test_iso_name2cc_populated() {
-        assert!(!ISO_NAME2CC.is_empty());
-        assert!(ISO_NAME2CC.contains_key("ukraine"));
-        assert!(ISO_NAME2CC.contains_key("germany"));
-        assert!(ISO_NAME2CC.contains_key("france"));
-        assert!(ISO_NAME2CC.contains_key("japan"));
+    fn test_iso_name2alpha2_populated() {
+        assert!(!ISO_NAME2ALPHA2.is_empty());
+        assert!(ISO_NAME2ALPHA2.contains_key("ukraine"));
+        assert!(ISO_NAME2ALPHA2.contains_key("germany"));
+        assert!(ISO_NAME2ALPHA2.contains_key("france"));
+        assert!(ISO_NAME2ALPHA2.contains_key("japan"));
     }
 
     #[test]
-    fn test_iso_name2cc_values() {
-        assert_eq!(ISO_NAME2CC.get("ukraine"), Some(&CountryCode::UKR));
-        assert_eq!(ISO_NAME2CC.get("germany"), Some(&CountryCode::DEU));
-        assert_eq!(ISO_NAME2CC.get("france"), Some(&CountryCode::FRA));
-        assert_eq!(ISO_NAME2CC.get("japan"), Some(&CountryCode::JPN));
+    fn test_iso_name2alpha2_values() {
+        assert_eq!(ISO_NAME2ALPHA2.get("ukraine"), Some(&Alpha2::UA));
+        assert_eq!(ISO_NAME2ALPHA2.get("germany"), Some(&Alpha2::DE));
+        assert_eq!(ISO_NAME2ALPHA2.get("france"), Some(&Alpha2::FR));
+        assert_eq!(ISO_NAME2ALPHA2.get("japan"), Some(&Alpha2::JP));
     }
 
     #[test]
-    fn test_sms_id2cc_populated() {
-        assert!(!SMS_ID2CC.is_empty());
+    fn test_sms_id2country_populated() {
+        assert!(!SMS_ID2COUNTRY.is_empty());
         // Should have many countries mapped
         assert!(
-            SMS_ID2CC.len() > 50,
+            SMS_ID2COUNTRY.len() > 50,
             "Too few countries mapped: {}",
-            SMS_ID2CC.len()
+            SMS_ID2COUNTRY.len()
         );
     }
 
     #[test]
-    fn test_cc2sms_id_populated() {
-        assert!(!CC2SMS_ID.is_empty());
-        assert_eq!(CC2SMS_ID.len(), SMS_ID2CC.len());
+    fn test_country2sms_id_populated() {
+        assert!(!COUNTRY2SMS_ID.is_empty());
+        assert_eq!(COUNTRY2SMS_ID.len(), SMS_ID2COUNTRY.len());
     }
 
     #[test]
     fn test_country_to_sms_id() {
         // Test countries from sms_activate_countries.json
-        assert_eq!(CountryCode::UKR.sms_id().unwrap(), 1);
-        assert_eq!(CountryCode::GBR.sms_id().unwrap(), 16);
-        assert_eq!(CountryCode::USA.sms_id().unwrap(), 187);
+        assert_eq!(Alpha2::UA.to_country().sms_id().unwrap(), 1);
+        assert_eq!(Alpha2::GB.to_country().sms_id().unwrap(), 16);
+        assert_eq!(Alpha2::US.to_country().sms_id().unwrap(), 187);
     }
 
     #[test]
     fn test_sms_id_to_country() {
-        assert_eq!(CountryCode::from_sms_id(1).unwrap(), CountryCode::UKR);
-        assert_eq!(CountryCode::from_sms_id(16).unwrap(), CountryCode::GBR);
-        assert_eq!(CountryCode::from_sms_id(187).unwrap(), CountryCode::USA);
+        assert_eq!(Country::from_sms_id(1).unwrap().alpha2(), Alpha2::UA);
+        assert_eq!(Country::from_sms_id(16).unwrap().alpha2(), Alpha2::GB);
+        assert_eq!(Country::from_sms_id(187).unwrap().alpha2(), Alpha2::US);
     }
 
     #[test]
     fn test_unknown_country() {
         // Antarctica doesn't have SMS service
-        assert!(CountryCode::ATA.sms_id().is_err());
+        assert!(Alpha2::AQ.to_country().sms_id().is_err());
     }
 
     #[test]
     fn test_unknown_sms_id() {
-        assert!(CountryCode::from_sms_id(9999).is_err());
+        assert!(Country::from_sms_id(9999).is_err());
     }
 
     #[test]
     fn test_round_trip_conversion() {
-        for (original_cc, sms_id) in CC2SMS_ID.iter() {
-            let converted_cc = CountryCode::from_sms_id(*sms_id).unwrap_or_else(|_| {
-                panic!("Failed to convert SMS ID {} back to CountryCode", sms_id)
-            });
+        for (sms_id, original_country) in SMS_ID2COUNTRY.iter() {
+            let converted_country = Country::from_sms_id(*sms_id)
+                .unwrap_or_else(|_| panic!("Failed to convert SMS ID {} back to Country", sms_id));
             assert_eq!(
-                *original_cc, converted_cc,
+                original_country.alpha2(),
+                converted_country.alpha2(),
                 "Round-trip failed for {:?} (SMS ID: {})",
-                original_cc, sms_id
+                original_country.iso_short_name(),
+                sms_id
             );
         }
     }
 
     #[test]
     fn test_reverse_round_trip_conversion() {
-        for (original_id, cc) in SMS_ID2CC.iter() {
-            let converted_id = cc
-                .sms_id()
-                .unwrap_or_else(|_| panic!("Failed to get SMS ID for {:?}", cc));
+        for (original_id, country) in SMS_ID2COUNTRY.iter() {
+            let converted_id = country.sms_id().unwrap_or_else(|_| {
+                panic!("Failed to get SMS ID for {:?}", country.iso_short_name())
+            });
             assert_eq!(
-                *original_id, converted_id,
+                *original_id,
+                converted_id,
                 "Reverse round-trip failed for SMS ID {} ({:?})",
-                original_id, cc
+                original_id,
+                country.iso_short_name()
             );
         }
     }
@@ -299,28 +304,29 @@ mod tests {
     #[test]
     fn test_popular_countries_have_mapping() {
         let popular = [
-            CountryCode::USA,
-            CountryCode::GBR,
-            CountryCode::UKR,
-            CountryCode::DEU,
-            CountryCode::FRA,
-            CountryCode::ITA,
-            CountryCode::ESP,
-            CountryCode::POL,
-            CountryCode::NLD,
-            CountryCode::CHN,
-            CountryCode::IND,
-            CountryCode::BRA,
-            CountryCode::IDN,
-            CountryCode::TUR,
+            Alpha2::US,
+            Alpha2::GB,
+            Alpha2::UA,
+            Alpha2::DE,
+            Alpha2::FR,
+            Alpha2::IT,
+            Alpha2::ES,
+            Alpha2::PL,
+            Alpha2::NL,
+            Alpha2::CN,
+            Alpha2::IN,
+            Alpha2::BR,
+            Alpha2::ID,
+            Alpha2::TR,
         ];
 
-        for cc in popular {
+        for alpha2 in popular {
+            let country = alpha2.to_country();
             assert!(
-                cc.sms_id().is_ok(),
-                "Popular country {:?} ({}) should have SMS mapping",
-                cc,
-                cc.name()
+                country.sms_id().is_ok(),
+                "Popular country {:?} ({:?}) should have SMS mapping",
+                country.iso_short_name(),
+                country.alpha2()
             );
         }
     }
@@ -329,12 +335,12 @@ mod tests {
     fn test_error_display() {
         let err1 = CountryMapError::UnknownSmsId { id: 12345 };
         assert!(err1.to_string().contains("12345"));
-        assert!(err1.to_string().contains("Unknown ISO country"));
+        assert!(err1.to_string().contains("Unknown country"));
 
         let err2 = CountryMapError::NoSmsMapping {
-            code: CountryCode::ATA,
+            country: Box::new(Alpha2::AQ.to_country()),
         };
-        assert!(err2.to_string().contains("AQ"));
+        assert!(err2.to_string().contains("Antarctica"));
         assert!(err2.to_string().contains("No SMS-Activate mapping"));
     }
 

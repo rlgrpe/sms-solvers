@@ -28,8 +28,8 @@ use sms_solvers::sms_activate::{
     Service, SmsActivateClient, SmsActivateError, SmsActivateProvider, SmsCountryExt,
 };
 use sms_solvers::{
-    CountryCode, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService,
-    SmsSolverServiceConfig, SmsSolverServiceTrait,
+    Alpha2, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    SmsSolverServiceTrait,
 };
 use std::env;
 use std::time::Duration;
@@ -119,7 +119,7 @@ async fn test_get_phone_number_ukraine() {
     let provider = create_provider();
 
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     match result {
@@ -158,7 +158,7 @@ async fn test_get_phone_number_usa() {
     let provider = create_provider();
 
     let result = provider
-        .get_phone_number(CountryCode::USA, TEST_SERVICE)
+        .get_phone_number(Alpha2::US.to_country(), TEST_SERVICE)
         .await;
 
     match result {
@@ -193,7 +193,7 @@ async fn test_get_phone_number_germany() {
     let provider = create_provider();
 
     let result = provider
-        .get_phone_number(CountryCode::DEU, TEST_SERVICE)
+        .get_phone_number(Alpha2::DE.to_country(), TEST_SERVICE)
         .await;
 
     match result {
@@ -231,7 +231,9 @@ async fn test_get_phone_number_germany() {
 async fn test_service_get_number() {
     let service = create_service();
 
-    let result = service.get_number(CountryCode::UKR, TEST_SERVICE).await;
+    let result = service
+        .get_number(Alpha2::UA.to_country(), TEST_SERVICE)
+        .await;
 
     match result {
         Ok(sms_result) => {
@@ -241,14 +243,14 @@ async fn test_service_get_number() {
             println!("  Dial code: {}", sms_result.dial_code);
             println!("  Number: {}", sms_result.number);
             println!(
-                "  Country: {} ({})",
-                sms_result.country.name(),
+                "  Country: {} ({:?})",
+                sms_result.country.iso_short_name(),
                 sms_result.country.alpha2()
             );
 
             // Verify the parsed components
             assert_eq!(sms_result.dial_code.as_str(), "380");
-            assert_eq!(sms_result.country, CountryCode::UKR);
+            assert_eq!(sms_result.country.alpha2(), Alpha2::UA);
 
             // Verify full_number = dial_code + number
             let expected_full = format!("{}{}", sms_result.dial_code, sms_result.number);
@@ -276,7 +278,9 @@ async fn test_service_get_number() {
 async fn test_service_with_retry() {
     let service = create_retryable_service();
 
-    let result = service.get_number(CountryCode::GBR, TEST_SERVICE).await;
+    let result = service
+        .get_number(Alpha2::GB.to_country(), TEST_SERVICE)
+        .await;
 
     match result {
         Ok(sms_result) => {
@@ -315,9 +319,9 @@ async fn test_country_mapping_with_api() {
 
     // Test a few countries with known SMS IDs
     let test_countries = [
-        (CountryCode::UKR, "380"), // ID: 1
-        (CountryCode::DEU, "49"),  // ID: 43
-        (CountryCode::FRA, "33"),  // ID: 78
+        (Alpha2::UA.to_country(), "380"), // ID: 1
+        (Alpha2::DE.to_country(), "49"),  // ID: 43
+        (Alpha2::FR.to_country(), "33"),  // ID: 78
     ];
 
     for (country, expected_prefix) in test_countries {
@@ -326,9 +330,9 @@ async fn test_country_mapping_with_api() {
         assert!(
             sms_id.is_ok(),
             "Country {} should have SMS ID",
-            country.name()
+            country.iso_short_name()
         );
-        println!("{}: SMS ID = {}", country.name(), sms_id.unwrap());
+        println!("{}: SMS ID = {}", country.iso_short_name(), sms_id.unwrap());
 
         // Try to get a number (may fail if no numbers available)
         let result = provider.get_phone_number(country, TEST_SERVICE).await;
@@ -365,7 +369,7 @@ async fn test_invalid_api_key() {
     let provider = SmsActivateProvider::new(client);
 
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     assert!(result.is_err(), "Should fail with invalid API key");
@@ -390,7 +394,7 @@ async fn test_get_sms_status() {
 
     // Get a number
     let result = provider
-        .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+        .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
     if let Ok((task_id, full_number)) = result {
@@ -434,7 +438,7 @@ async fn test_multiple_number_requests() {
         println!("Request {}/3...", i + 1);
 
         let result = provider
-            .get_phone_number(CountryCode::UKR, TEST_SERVICE)
+            .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
             .await;
 
         match result {

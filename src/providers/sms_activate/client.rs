@@ -6,7 +6,7 @@ use super::response::{SmsActivateResponse, SmsActivateTextResponse};
 use super::services::Service;
 use super::types::{ActivationStatus, GetPhoneNumberResponse, GetSmsResponse, SetStatusResponse};
 use crate::types::TaskId;
-use isocountry::CountryCode;
+use keshvar::Country;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use secrecy::{ExposeSecret, SecretString};
 use std::collections::HashMap;
@@ -31,17 +31,17 @@ pub const DEFAULT_API_URL: &str = "https://api.sms-activate.org/stubs/handler_ap
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::providers::sms_activate::{SmsActivateClient, Service};
-/// use isocountry::CountryCode;
+/// use sms_solvers::sms_activate::{SmsActivateClient, Service};
+/// use sms_solvers::Alpha2;
 ///
 /// let client = SmsActivateClient::with_api_key("your_api_key")?;
 ///
 /// // Get a phone number for WhatsApp verification
-/// let response = client.get_phone_number(CountryCode::USA, Service::Whatsapp).await?;
+/// let response = client.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
 /// println!("Got number: {}", response.phone_number);
 ///
 /// // Use the same client for Instagram
-/// let response = client.get_phone_number(CountryCode::DEU, Service::InstagramThreads).await?;
+/// let response = client.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
 /// ```
 #[derive(Clone)]
 pub struct SmsActivateClient {
@@ -183,17 +183,19 @@ impl SmsActivateClient {
         tracing::instrument(
             name = "SmsActivateClient::get_phone_number",
             skip_all,
-            fields(service = %service.code(), country = %country.alpha2())
+            fields(service = %service.code(), country = %country.iso_short_name())
         )
     )]
     pub async fn get_phone_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Service,
     ) -> Result<GetPhoneNumberResponse> {
         let country_id = country
             .sms_id()
-            .map_err(|_| SmsActivateError::CountryMapping { country })?;
+            .map_err(|_| SmsActivateError::CountryMapping {
+                country: Box::new(country),
+            })?;
 
         let url = self.build_request_url(
             "getNumberV2",
@@ -297,6 +299,7 @@ impl SmsActivateClient {
 mod tests {
     use super::*;
     use crate::providers::sms_activate::errors::SmsActivateErrorCode;
+    use keshvar::Alpha2;
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -325,7 +328,7 @@ mod tests {
 
         let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client
-            .get_phone_number(CountryCode::UKR, Service::InstagramThreads)
+            .get_phone_number(Alpha2::UA.to_country(), Service::InstagramThreads)
             .await;
 
         assert!(result.is_ok());
@@ -347,7 +350,7 @@ mod tests {
 
         let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
         let result = client
-            .get_phone_number(CountryCode::UKR, Service::Whatsapp)
+            .get_phone_number(Alpha2::UA.to_country(), Service::Whatsapp)
             .await;
 
         assert!(result.is_err());

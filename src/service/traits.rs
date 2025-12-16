@@ -2,7 +2,7 @@
 
 use crate::errors::RetryableError;
 use crate::types::{SmsCode, SmsTaskResult, TaskId};
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::error::Error as StdError;
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
@@ -28,7 +28,7 @@ pub trait SmsSolverServiceTrait: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `country` - ISO country code for the desired phone number
+    /// * `country` - Country for the desired phone number
     /// * `service` - The service to get a number for (e.g., WhatsApp verification)
     ///
     /// # Returns
@@ -36,7 +36,7 @@ pub trait SmsSolverServiceTrait: Send + Sync {
     /// The SMS task result containing the phone number and task ID.
     fn get_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Self::Service,
     ) -> impl Future<Output = Result<SmsTaskResult, Self::Error>> + Send;
 

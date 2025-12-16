@@ -9,10 +9,9 @@
 //! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example retry_callbacks
 //! ```
 
-use isocountry::CountryCode;
 use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
 use sms_solvers::{
-    RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
+    Alpha2, RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
     SmsSolverServiceTrait,
 };
 use std::env;
@@ -63,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Requesting phone number (retries will be logged)...\n");
 
     match service
-        .get_number(CountryCode::USA, Service::Whatsapp)
+        .get_number(Alpha2::US.to_country(), Service::Whatsapp)
         .await
     {
         Ok(result) => {

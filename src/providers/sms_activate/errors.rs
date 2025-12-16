@@ -302,8 +302,8 @@ pub enum SmsActivateError {
     SolutionTimeout { timeout: Duration, task_id: TaskId },
 
     /// Failed to map country code.
-    #[error("No SMS-Activate mapping for country {country}")]
-    CountryMapping { country: isocountry::CountryCode },
+    #[error("No SMS-Activate mapping for country {}", country.iso_short_name())]
+    CountryMapping { country: Box<keshvar::Country> },
 
     /// Failed to parse SetStatus response.
     #[error("Failed to parse SetStatus response: {raw}")]

@@ -95,8 +95,10 @@ pub use types::{
 // Re-export utility types
 pub use utils::RetryConfig;
 
-// Re-export isocountry so users don't need to add it as a separate dependency
-pub use isocountry::CountryCode;
+// Re-export keshvar so users don't need to add it as a separate dependency
+pub use keshvar::{Alpha2, Country};
+// Re-export utility types
+pub use types::DialCodeToCountryError;
 
 /// SMS Activate provider types.
 ///

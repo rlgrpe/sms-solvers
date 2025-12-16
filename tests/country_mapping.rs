@@ -3,72 +3,68 @@
 //! These tests verify that the country mapping works correctly across
 //! the SMS Activate countries JSON and the dial codes JSON.
 
-use isocountry::CountryCode;
-use sms_solvers::DialCode;
+use keshvar::CountryIterator;
 use sms_solvers::sms_activate::SmsCountryExt;
+use sms_solvers::{Alpha2, Country, DialCode};
 
 /// Test that popular countries have valid SMS Activate mappings.
 #[test]
 fn test_popular_countries_have_sms_mapping() {
     let popular_countries = [
-        CountryCode::USA,
-        CountryCode::GBR,
-        CountryCode::UKR,
-        CountryCode::DEU,
-        CountryCode::FRA,
-        CountryCode::ITA,
-        CountryCode::ESP,
-        CountryCode::POL,
-        CountryCode::NLD,
-        CountryCode::CHN,
-        CountryCode::IND,
-        CountryCode::BRA,
-        CountryCode::IDN,
-        CountryCode::TUR,
-        CountryCode::JPN,
-        CountryCode::AUS,
-        CountryCode::CAN,
-        CountryCode::MEX,
-        CountryCode::ARG,
-        // Note: KOR (South Korea) is not in SMS Activate countries list
+        Alpha2::US,
+        Alpha2::GB,
+        Alpha2::UA,
+        Alpha2::DE,
+        Alpha2::FR,
+        Alpha2::IT,
+        Alpha2::ES,
+        Alpha2::PL,
+        Alpha2::NL,
+        Alpha2::CN,
+        Alpha2::IN,
+        Alpha2::BR,
+        Alpha2::ID,
+        Alpha2::TR,
+        Alpha2::JP,
+        Alpha2::AU,
+        Alpha2::CA,
+        Alpha2::MX,
+        Alpha2::AR,
+        // Note: KR (South Korea) may not be in SMS Activate countries list
     ];
 
-    for country in popular_countries {
+    for alpha2 in popular_countries {
+        let country = alpha2.to_country();
         let result = country.sms_id();
         assert!(
             result.is_ok(),
-            "Popular country {} ({}) should have SMS mapping, but got error: {:?}",
-            country.name(),
+            "Popular country {} ({:?}) should have SMS mapping, but got error: {:?}",
+            country.iso_short_name(),
             country.alpha2(),
             result.err()
         );
     }
 }
 
-/// Test that we can do round-trip conversions: CountryCode -> SMS ID -> CountryCode.
+/// Test that we can do round-trip conversions: Country -> SMS ID -> Country.
 #[test]
 fn test_country_sms_id_round_trip() {
-    let test_countries = [
-        CountryCode::UKR,
-        CountryCode::GBR,
-        CountryCode::DEU,
-        CountryCode::FRA,
-        CountryCode::POL,
-    ];
+    let test_countries = [Alpha2::UA, Alpha2::GB, Alpha2::DE, Alpha2::FR, Alpha2::PL];
 
-    for original in test_countries {
+    for alpha2 in test_countries {
+        let original = alpha2.to_country();
         let sms_id = original
             .sms_id()
-            .unwrap_or_else(|_| panic!("Failed to get SMS ID for {}", original.name()));
+            .unwrap_or_else(|_| panic!("Failed to get SMS ID for {}", original.iso_short_name()));
 
-        let converted = CountryCode::from_sms_id(sms_id)
-            .unwrap_or_else(|_| panic!("Failed to convert SMS ID {} back to CountryCode", sms_id));
+        let converted = Country::from_sms_id(sms_id)
+            .unwrap_or_else(|_| panic!("Failed to convert SMS ID {} back to Country", sms_id));
 
         assert_eq!(
-            original,
-            converted,
+            original.alpha2(),
+            converted.alpha2(),
             "Round-trip conversion failed for {} (SMS ID: {})",
-            original.name(),
+            original.iso_short_name(),
             sms_id
         );
     }
@@ -79,22 +75,22 @@ fn test_country_sms_id_round_trip() {
 fn test_known_sms_activate_ids() {
     // These IDs are from sms_activate_countries.json
     let known_mappings = [
-        (1, CountryCode::UKR),   // "1": "Ukraine"
-        (16, CountryCode::GBR),  // "16": "United Kingdom"
-        (43, CountryCode::DEU),  // "43": "Germany"
-        (78, CountryCode::FRA),  // "78": "France"
-        (187, CountryCode::USA), // "187": "USA"
+        (1, Alpha2::UA),   // "1": "Ukraine"
+        (16, Alpha2::GB),  // "16": "United Kingdom"
+        (43, Alpha2::DE),  // "43": "Germany"
+        (78, Alpha2::FR),  // "78": "France"
+        (187, Alpha2::US), // "187": "USA"
     ];
 
-    for (sms_id, expected_country) in known_mappings {
-        let result = CountryCode::from_sms_id(sms_id);
+    for (sms_id, expected_alpha2) in known_mappings {
+        let result = Country::from_sms_id(sms_id);
         assert!(result.is_ok(), "SMS ID {} should map to a country", sms_id);
         assert_eq!(
-            result.unwrap(),
-            expected_country,
-            "SMS ID {} should map to {}",
+            result.unwrap().alpha2(),
+            expected_alpha2,
+            "SMS ID {} should map to {:?}",
             sms_id,
-            expected_country.name()
+            expected_alpha2
         );
     }
 }
@@ -105,7 +101,7 @@ fn test_unknown_sms_id_returns_error() {
     let unknown_ids: [u16; 3] = [9999, 50000, 60000];
 
     for id in unknown_ids {
-        let result = CountryCode::from_sms_id(id);
+        let result = Country::from_sms_id(id);
         assert!(
             result.is_err(),
             "Unknown SMS ID {} should return an error",
@@ -119,16 +115,17 @@ fn test_unknown_sms_id_returns_error() {
 fn test_unsupported_countries_return_error() {
     // Antarctica and similar territories don't have SMS service
     let unsupported = [
-        CountryCode::ATA, // Antarctica
-        CountryCode::BVT, // Bouvet Island
+        Alpha2::AQ, // Antarctica
+        Alpha2::BV, // Bouvet Island
     ];
 
-    for country in unsupported {
+    for alpha2 in unsupported {
+        let country = alpha2.to_country();
         let result = country.sms_id();
         assert!(
             result.is_err(),
             "Country {} should not have SMS mapping",
-            country.name()
+            country.iso_short_name()
         );
     }
 }
@@ -182,8 +179,8 @@ fn test_invalid_dial_codes() {
 fn test_reasonable_country_count() {
     // Count how many countries have SMS mappings
     let mut mapped_count = 0;
-    for cc in CountryCode::iter() {
-        if cc.sms_id().is_ok() {
+    for country in CountryIterator::new() {
+        if country.sms_id().is_ok() {
             mapped_count += 1;
         }
     }
@@ -210,27 +207,27 @@ fn test_reasonable_country_count() {
 fn test_name_override_countries() {
     // These countries have name differences between SMS-Activate and ISO
     let override_countries = [
-        (187, CountryCode::USA), // "USA" vs "United States of America"
-        (16, CountryCode::GBR),  // "United Kingdom" matches
-        (95, CountryCode::ARE),  // "UAE" vs "United Arab Emirates"
-        (63, CountryCode::CZE),  // "Czech" vs "Czechia"
-        (27, CountryCode::CIV),  // "Ivory Coast" vs "Côte d'Ivoire"
+        (187, Alpha2::US), // "USA" vs "United States of America"
+        (16, Alpha2::GB),  // "United Kingdom" matches
+        (95, Alpha2::AE),  // "UAE" vs "United Arab Emirates"
+        (63, Alpha2::CZ),  // "Czech" vs "Czechia"
+        (27, Alpha2::CI),  // "Ivory Coast" vs "Côte d'Ivoire"
     ];
 
-    for (sms_id, expected_country) in override_countries {
-        let result = CountryCode::from_sms_id(sms_id);
+    for (sms_id, expected_alpha2) in override_countries {
+        let result = Country::from_sms_id(sms_id);
         assert!(
             result.is_ok(),
-            "Override country {} (SMS ID {}) should be mapped",
-            expected_country.name(),
+            "Override country {:?} (SMS ID {}) should be mapped",
+            expected_alpha2,
             sms_id
         );
         assert_eq!(
-            result.unwrap(),
-            expected_country,
-            "SMS ID {} should map to {}",
+            result.unwrap().alpha2(),
+            expected_alpha2,
+            "SMS ID {} should map to {:?}",
             sms_id,
-            expected_country.name()
+            expected_alpha2
         );
     }
 }

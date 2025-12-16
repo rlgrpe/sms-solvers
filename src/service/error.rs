@@ -2,7 +2,7 @@
 
 use crate::errors::RetryableError;
 use crate::types::{DialCode, TaskId};
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::error::Error as StdError;
 use std::time::Duration;
 use thiserror::Error;
@@ -22,14 +22,14 @@ pub enum SmsSolverServiceError {
     },
 
     /// No phone number available for the requested country.
-    #[error("No phone numbers available for country {country}")]
-    NoNumbersAvailable { country: CountryCode },
+    #[error("No phone numbers available for country {}", country.iso_short_name())]
+    NoNumbersAvailable { country: Box<Country> },
 
     /// Invalid dial code for the country.
-    #[error("Invalid dial code '{dial_code}' for country {country}")]
+    #[error("Invalid dial code '{dial_code}' for country {}", country.iso_short_name())]
     InvalidDialCode {
         dial_code: String,
-        country: CountryCode,
+        country: Box<Country>,
     },
 
     /// Failed to parse the phone number.

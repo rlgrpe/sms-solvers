@@ -5,7 +5,7 @@ use crate::errors::RetryableError;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
 use crate::utils::retry::RetryConfig;
 use backon::Retryable;
-use isocountry::CountryCode;
+use keshvar::Country;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
@@ -146,20 +146,22 @@ where
         tracing::instrument(
             name = "retryable_provider.get_phone_number",
             skip_all,
-            fields(country = %country)
+            fields(country = %country.iso_short_name())
         )
     )]
     async fn get_phone_number(
         &self,
-        country: CountryCode,
+        country: Country,
         service: Self::Service,
     ) -> Result<(TaskId, FullNumber), Self::Error> {
         let inner = Arc::clone(&self.inner);
         let on_retry = self.on_retry.clone();
+        let country_name = country.iso_short_name().to_string();
         (|| {
             let inner = Arc::clone(&inner);
             let svc = service.clone();
-            async move { inner.get_phone_number(country, svc).await }
+            let c = country.clone();
+            async move { inner.get_phone_number(c, svc).await }
         })
         .retry(self.retry_config.build_strategy())
         .when(|err: &Self::Error| err.is_retryable())
@@ -172,7 +174,7 @@ where
             #[cfg(feature = "tracing")]
             debug!(
                 error = ?err,
-                country = %country,
+                country = %country_name,
                 retry_after_secs = %duration.as_secs_f64(),
                 "Retrying get_phone_number"
             );
@@ -233,7 +235,7 @@ where
         self.inner.supports_service(service)
     }
 
-    fn available_countries(&self, service: &Self::Service) -> Vec<CountryCode> {
+    fn available_countries(&self, service: &Self::Service) -> Vec<Country> {
         self.inner.available_countries(service)
     }
 
