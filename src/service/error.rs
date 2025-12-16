@@ -85,6 +85,10 @@ pub enum SmsSolverServiceError {
         /// The task ID that was cancelled due to blacklist.
         task_id: TaskId,
     },
+
+    /// No available dial codes after filtering.
+    #[error("No available dial codes after filtering")]
+    NoAvailableDialCodes,
 }
 
 impl RetryableError for SmsSolverServiceError {
@@ -97,7 +101,8 @@ impl RetryableError for SmsSolverServiceError {
             | SmsSolverServiceError::NoNumbersAvailable { .. }
             | SmsSolverServiceError::InvalidDialCode { .. }
             | SmsSolverServiceError::NumberParse { .. }
-            | SmsSolverServiceError::DialCodeBlacklisted { .. } => false,
+            | SmsSolverServiceError::DialCodeBlacklisted { .. }
+            | SmsSolverServiceError::NoAvailableDialCodes => false,
         }
     }
 
@@ -113,7 +118,8 @@ impl RetryableError for SmsSolverServiceError {
             | SmsSolverServiceError::CancelFailed { .. }
             | SmsSolverServiceError::InvalidDialCode { .. }
             | SmsSolverServiceError::NumberParse { .. }
-            | SmsSolverServiceError::DialCodeBlacklisted { .. } => false,
+            | SmsSolverServiceError::DialCodeBlacklisted { .. }
+            | SmsSolverServiceError::NoAvailableDialCodes => false,
         }
     }
 }

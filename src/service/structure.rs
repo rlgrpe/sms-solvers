@@ -168,6 +168,73 @@ where
     pub fn set_config(&mut self, config: SmsSolverServiceConfig) {
         self.config = config;
     }
+
+    /// Filter dial codes to only include those supported by the provider.
+    ///
+    /// This method filters out blacklisted dial codes using the provider's
+    /// `is_dial_code_supported` method.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sms_solvers::{SmsSolverService, DialCode};
+    ///
+    /// let dial_codes = vec![
+    ///     DialCode::new("1").unwrap(),
+    ///     DialCode::new("44").unwrap(),
+    ///     DialCode::new("380").unwrap(),
+    /// ];
+    ///
+    /// let supported = service.filter_supported_dial_codes(dial_codes);
+    /// ```
+    pub fn filter_supported_dial_codes(&self, dial_codes: Vec<DialCode>) -> Vec<DialCode> {
+        dial_codes
+            .into_iter()
+            .filter(|dc| self.provider.is_dial_code_supported(dc))
+            .collect()
+    }
+
+    /// Select a random dial code from the provided list, filtering out unsupported ones.
+    ///
+    /// This method first filters the dial codes using `is_dial_code_supported`,
+    /// then selects one at random from the remaining options.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SmsSolverServiceError::NoAvailableDialCodes` if no supported
+    /// dial codes remain after filtering.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sms_solvers::{SmsSolverService, DialCode};
+    ///
+    /// let dial_codes = vec![
+    ///     DialCode::new("1").unwrap(),
+    ///     DialCode::new("44").unwrap(),
+    ///     DialCode::new("380").unwrap(),
+    /// ];
+    ///
+    /// let selected = service.select_random_dial_code(dial_codes)?;
+    /// ```
+    #[cfg(feature = "random")]
+    pub fn select_random_dial_code(
+        &self,
+        dial_codes: Vec<DialCode>,
+    ) -> Result<DialCode, SmsSolverServiceError> {
+        use rand::seq::SliceRandom;
+
+        let supported = self.filter_supported_dial_codes(dial_codes);
+
+        if supported.is_empty() {
+            return Err(SmsSolverServiceError::NoAvailableDialCodes);
+        }
+
+        supported
+            .choose(&mut rand::thread_rng())
+            .cloned()
+            .ok_or(SmsSolverServiceError::NoAvailableDialCodes)
+    }
 }
 
 impl<P: Provider> SmsSolverServiceTrait for SmsSolverService<P>
