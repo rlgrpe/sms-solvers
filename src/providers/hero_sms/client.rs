@@ -1,8 +1,8 @@
-//! SMS Activate HTTP client.
+//! Hero SMS HTTP client.
 
 use super::countries::SmsCountryExt;
-use super::errors::{Result, SmsActivateError};
-use super::response::{SmsActivateResponse, SmsActivateTextResponse};
+use super::errors::{HeroSmsError, Result};
+use super::response::{HeroSmsResponse, HeroSmsTextResponse};
 use super::services::Service;
 use super::types::{ActivationStatus, GetPhoneNumberResponse, GetSmsResponse, SetStatusResponse};
 use crate::types::TaskId;
@@ -19,22 +19,22 @@ use tracing::Span;
 #[cfg(feature = "tracing")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-/// Default SMS Activate API URL.
-pub const DEFAULT_API_URL: &str = "https://api.sms-activate.org/stubs/handler_api.php";
+/// Default Hero SMS API URL.
+pub const DEFAULT_API_URL: &str = "https://hero-sms.com/stubs/handler_api.php";
 
-/// SMS Activate HTTP client.
+/// Hero SMS HTTP client.
 ///
-/// This client handles communication with the SMS Activate API for phone number
+/// This client handles communication with the Hero SMS API for phone number
 /// verification services. The client is service-agnostic - you specify the service
 /// when requesting a phone number.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::sms_activate::{SmsActivateClient, Service};
+/// use sms_solvers::hero_sms::{HeroSms, Service};
 /// use sms_solvers::Alpha2;
 ///
-/// let client = SmsActivateClient::with_api_key("your_api_key")?;
+/// let client = HeroSms::with_api_key("your_api_key")?;
 ///
 /// // Get a phone number for WhatsApp verification
 /// let response = client.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
@@ -44,29 +44,29 @@ pub const DEFAULT_API_URL: &str = "https://api.sms-activate.org/stubs/handler_ap
 /// let response = client.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
 /// ```
 #[derive(Clone)]
-pub struct SmsActivateClient {
+pub struct HeroSms {
     http_client: ClientWithMiddleware,
     api_key: SecretString,
     endpoint: Url,
 }
 
-impl std::fmt::Debug for SmsActivateClient {
+impl std::fmt::Debug for HeroSms {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SmsActivateClient")
+        f.debug_struct("HeroSmsClient")
             .field("endpoint", &self.endpoint)
             .field("api_key", &"[REDACTED]")
             .finish()
     }
 }
 
-/// Builder for configuring a [`SmsActivateClient`].
-pub struct SmsActivateClientBuilder {
+/// Builder for configuring a [`HeroSms`].
+pub struct HeroSmsClientBuilder {
     api_key: String,
     endpoint: Option<Url>,
     http_client: Option<ClientWithMiddleware>,
 }
 
-impl SmsActivateClientBuilder {
+impl HeroSmsClientBuilder {
     /// Create a new builder with the given API key.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -88,8 +88,8 @@ impl SmsActivateClientBuilder {
         self
     }
 
-    /// Build the [`SmsActivateClient`].
-    pub fn build(self) -> Result<SmsActivateClient> {
+    /// Build the [`HeroSms`].
+    pub fn build(self) -> Result<HeroSms> {
         let endpoint = self
             .endpoint
             .unwrap_or_else(|| Url::parse(DEFAULT_API_URL).expect("Invalid default URL"));
@@ -99,12 +99,12 @@ impl SmsActivateClientBuilder {
             None => {
                 let client = reqwest::Client::builder()
                     .build()
-                    .map_err(SmsActivateError::BuildHttpClient)?;
+                    .map_err(HeroSmsError::BuildHttpClient)?;
                 ClientBuilder::new(client).build()
             }
         };
 
-        Ok(SmsActivateClient {
+        Ok(HeroSms {
             http_client,
             api_key: SecretString::from(self.api_key),
             endpoint,
@@ -112,15 +112,15 @@ impl SmsActivateClientBuilder {
     }
 }
 
-impl SmsActivateClient {
-    /// Create a new SMS Activate client.
+impl HeroSms {
+    /// Create a new Hero SMS client.
     ///
     /// # Arguments
-    /// * `endpoint` - Base URL for the SMS Activate API
+    /// * `endpoint` - Base URL for the Hero SMS API
     /// * `api_key` - API key for authentication
     pub fn new(endpoint: impl AsRef<str>, api_key: impl Into<String>) -> Result<Self> {
         let url = Url::parse(endpoint.as_ref()).map_err(|e| {
-            SmsActivateError::BuildRequestUrl(serde_urlencoded::ser::Error::Custom(
+            HeroSmsError::BuildRequestUrl(serde_urlencoded::ser::Error::Custom(
                 std::borrow::Cow::Owned(e.to_string()),
             ))
         })?;
@@ -134,8 +134,8 @@ impl SmsActivateClient {
     }
 
     /// Create a builder for configuring the client.
-    pub fn builder(api_key: impl Into<String>) -> SmsActivateClientBuilder {
-        SmsActivateClientBuilder::new(api_key)
+    pub fn builder(api_key: impl Into<String>) -> HeroSmsClientBuilder {
+        HeroSmsClientBuilder::new(api_key)
     }
 
     /// Build request URL with action and parameters.
@@ -152,7 +152,7 @@ impl SmsActivateClient {
         }
 
         endpoint.set_query(Some(
-            &serde_urlencoded::to_string(&params).map_err(SmsActivateError::BuildRequestUrl)?,
+            &serde_urlencoded::to_string(&params).map_err(HeroSmsError::BuildRequestUrl)?,
         ));
 
         Ok(endpoint)
@@ -165,12 +165,9 @@ impl SmsActivateClient {
             .get(url)
             .send()
             .await
-            .map_err(SmsActivateError::HttpRequest)?;
+            .map_err(HeroSmsError::HttpRequest)?;
 
-        response
-            .text()
-            .await
-            .map_err(SmsActivateError::ParseResponse)
+        response.text().await.map_err(HeroSmsError::ParseResponse)
     }
 
     /// Get a phone number for verification.
@@ -181,7 +178,7 @@ impl SmsActivateClient {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsActivateClient::get_phone_number",
+            name = "HeroSms::get_phone_number",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -191,11 +188,9 @@ impl SmsActivateClient {
         country: Country,
         service: Service,
     ) -> Result<GetPhoneNumberResponse> {
-        let country_id = country
-            .sms_id()
-            .map_err(|_| SmsActivateError::CountryMapping {
-                country: Box::new(country),
-            })?;
+        let country_id = country.sms_id().map_err(|_| HeroSmsError::CountryMapping {
+            country: Box::new(country),
+        })?;
 
         let url = self.build_request_url(
             "getNumberV2",
@@ -207,10 +202,10 @@ impl SmsActivateClient {
 
         let text = self.send_request(url).await?;
 
-        let response = SmsActivateResponse::<GetPhoneNumberResponse>::from_text(&text)
-            .map_err(SmsActivateError::DeserializeJson)?;
+        let response = HeroSmsResponse::<GetPhoneNumberResponse>::from_text(&text)
+            .map_err(HeroSmsError::DeserializeJson)?;
 
-        let data = response.into_result().map_err(SmsActivateError::Service)?;
+        let data = response.into_result().map_err(HeroSmsError::Service)?;
 
         #[cfg(feature = "tracing")]
         {
@@ -227,7 +222,7 @@ impl SmsActivateClient {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsActivateClient::get_sms_code",
+            name = "HeroSms::get_sms_code",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -237,10 +232,10 @@ impl SmsActivateClient {
 
         let text = self.send_request(url).await?;
 
-        let response = SmsActivateResponse::<GetSmsResponse>::from_text(&text)
-            .map_err(SmsActivateError::DeserializeJson)?;
+        let response = HeroSmsResponse::<GetSmsResponse>::from_text(&text)
+            .map_err(HeroSmsError::DeserializeJson)?;
 
-        let data = response.into_result().map_err(SmsActivateError::Service)?;
+        let data = response.into_result().map_err(HeroSmsError::Service)?;
 
         #[cfg(feature = "tracing")]
         if let Some(sms) = &data.sms
@@ -258,7 +253,7 @@ impl SmsActivateClient {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsActivateClient::set_activation_status",
+            name = "HeroSms::set_activation_status",
             skip_all,
             fields(task_id = %task_id, status = %status)
         )
@@ -278,11 +273,11 @@ impl SmsActivateClient {
 
         let text = self.send_request(url).await?;
 
-        let response = SmsActivateTextResponse::from_text(&text);
-        let raw = response.into_result().map_err(SmsActivateError::Service)?;
+        let response = HeroSmsTextResponse::from_text(&text);
+        let raw = response.into_result().map_err(HeroSmsError::Service)?;
 
         let result = SetStatusResponse::from_raw(&raw)
-            .ok_or_else(|| SmsActivateError::FailedToParseSetStatusResponse { raw: raw.clone() })?;
+            .ok_or_else(|| HeroSmsError::FailedToParseSetStatusResponse { raw: raw.clone() })?;
 
         #[cfg(feature = "tracing")]
         {
@@ -298,7 +293,7 @@ impl SmsActivateClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::sms_activate::errors::SmsActivateErrorCode;
+    use crate::providers::hero_sms::errors::HeroSmsErrorCode;
     use keshvar::Alpha2;
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -326,7 +321,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
+        let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .get_phone_number(Alpha2::UA.to_country(), Service::InstagramThreads)
             .await;
@@ -348,15 +343,15 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
+        let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .get_phone_number(Alpha2::UA.to_country(), Service::Whatsapp)
             .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            SmsActivateError::Service(error) => {
-                assert_eq!(error.code, SmsActivateErrorCode::NoNumbers);
+            HeroSmsError::Service(error) => {
+                assert_eq!(error.code, HeroSmsErrorCode::NoNumbers);
             }
             _ => panic!("Expected Service error"),
         }
@@ -380,7 +375,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
+        let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client.get_sms_code(&TaskId::from("123456789")).await;
 
         assert!(result.is_ok());
@@ -400,7 +395,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SmsActivateClient::new(mock_server.uri(), "test_key").unwrap();
+        let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client
             .set_activation_status(
                 &TaskId::from("123456789"),

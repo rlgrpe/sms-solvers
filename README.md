@@ -1,10 +1,7 @@
 # SMS Solvers
 
-A Rust library for SMS verification services. Currently supports [SMS Activate](https://sms-activate.org/) with a
+A Rust library for SMS verification services. Currently supports [Hero SMS](https://hero-sms.com/) with a
 flexible provider architecture that allows adding new SMS providers.
-
-> **[Sign up for SMS Activate](https://sms-activate.io/?ref=834121)** - Get 10% cashback on your first deposit (up to $
-> 30)!
 
 > **Disclaimer**: This library is provided as-is. I am not obligated to maintain it, fix bugs, or add features. If you
 > want to contribute improvements, please submit a pull request.
@@ -24,14 +21,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.1.1" }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.0" }
 tokio = { version = "1", features = ["full"] }
 ```
 
 ## Quick Start
 
 ```rust
-use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
 use sms_solvers::{
     Alpha2, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
 };
@@ -40,8 +37,8 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create client and provider
-    let client = SmsActivateClient::with_api_key("your_api_key")?;
-    let provider = SmsActivateProvider::new(client);
+    let client = HeroSms::with_api_key("your_api_key")?;
+    let provider = HeroSmsProvider::new(client);
 
     // Configure the service
     let config = SmsSolverServiceConfig::default()
@@ -68,10 +65,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Wrap the provider with `SmsRetryableProvider` for automatic retry on transient errors:
 
 ```rust
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider};
 use sms_solvers::{RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig};
 use std::time::Duration;
 
-let provider = SmsActivateProvider::new(client);
+let client = HeroSms::with_api_key("your_api_key") ?;
+let provider = HeroSmsProvider::new(client);
 
 let retry_config = RetryConfig::default ()
 .with_min_delay(Duration::from_millis(500))
@@ -102,9 +101,9 @@ You can use the provider without the service layer:
 
 ```rust
 use sms_solvers::{Alpha2, Provider};
-use sms_solvers::sms_activate::{SmsActivateProvider, Service};
+use sms_solvers::hero_sms::{HeroSmsProvider, Service};
 
-let provider = SmsActivateProvider::new(client);
+let provider = HeroSmsProvider::new(client);
 
 // Get a phone number
 let (task_id, full_number) = provider
@@ -125,25 +124,25 @@ provider.cancel_activation( & task_id).await?;
 Block specific dial codes from being used:
 
 ```rust
-use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider};
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider};
 use sms_solvers::DialCode;
 use std::collections::HashSet;
 
-let client = SmsActivateClient::with_api_key("your_api_key") ?;
+let client = HeroSms::with_api_key("your_api_key") ?;
 let blacklist: HashSet<DialCode> = ["33", "49"]
 .into_iter()
 .map( | s| DialCode::new(s).unwrap())
 .collect();
-let provider = SmsActivateProvider::with_blacklist(client, blacklist);
+let provider = HeroSmsProvider::with_blacklist(client, blacklist);
 
 // Or add after creation
-let mut provider = SmsActivateProvider::new(client);
+let mut provider = HeroSmsProvider::new(client);
 provider.blacklist_dial_code(DialCode::new("33").unwrap());
 ```
 
 ## Supported Services
 
-The library supports various SMS Activate services including:
+The library supports various Hero SMS services including:
 
 - `Service::Whatsapp`
 - `Service::InstagramThreads`
@@ -152,17 +151,17 @@ The library supports various SMS Activate services including:
 
 ## Country Code Mapping
 
-The library automatically maps ISO country codes to SMS Activate IDs. `Alpha2` and `Country` are
+The library automatically maps ISO country codes to Hero SMS IDs. `Alpha2` and `Country` are
 re-exported from `keshvar` along with the `SmsCountryExt` helper trait:
 
 ```rust
-use sms_solvers::sms_activate::SmsCountryExt;
+use sms_solvers::hero_sms::SmsCountryExt;
 use sms_solvers::{Alpha2, Country};
 
-// Get SMS Activate ID for a country
+// Get Hero SMS ID for a country
 let sms_id = Alpha2::UA.to_country().sms_id() ?; // Returns 1
 
-// Get country from SMS Activate ID
+// Get country from Hero SMS ID
 let country = Country::from_sms_id(1) ?; // Returns Country::Ukraine
 ```
 
@@ -170,7 +169,7 @@ let country = Country::from_sms_id(1) ?; // Returns Country::Ukraine
 
 ```bash
 # Set your API key
-export SMS_ACTIVATE_API_KEY=your_api_key
+export HERO_SMS_API_KEY=your_api_key
 
 # Run basic usage example
 cargo run --example basic_usage
@@ -189,7 +188,7 @@ cargo run --example country_mapping
 cargo test
 
 # Run integration tests (requires API key, consumes credits)
-SMS_ACTIVATE_API_KEY=your_key cargo test --test sms_activate_api -- --ignored
+HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored
 ```
 
 ## Features
@@ -198,10 +197,10 @@ Enable optional features in `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.2.0", features = ["tracing"] }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.0", features = ["tracing"] }
 ```
 
-- `sms-activate` - SMS Activate provider support (enabled by default)
+- `hero-sms` - Hero SMS provider support (enabled by default)
 - `tracing` - Enables tracing instrumentation and OpenTelemetry integration (enabled by default)
 
 ## Public API
@@ -221,9 +220,9 @@ use sms_solvers::{
     RetryConfig, SmsRetryableProvider,
 };
 
-// Provider-specific types under sms_activate module
-use sms_solvers::sms_activate::{
-    SmsActivateClient, SmsActivateProvider, SmsActivateError, Service, SmsCountryExt,
+// Provider-specific types under hero_sms module
+use sms_solvers::hero_sms::{
+    HeroSms, HeroSmsProvider, HeroSmsError, Service, SmsCountryExt,
 };
 ```
 

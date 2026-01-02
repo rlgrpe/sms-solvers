@@ -1,16 +1,16 @@
 [package]
 name = "sms-solvers"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Generic SMS verification library with provider abstraction"
 license = "MIT"
 readme = "README.md"
-keywords = ["sms", "verification", "otp", "sms-activate"]
+keywords = ["sms", "verification", "otp", "hero-sms"]
 categories = ["api-bindings", "authentication"]
 
 [features]
-default = ["sms-activate", "tracing", "random"]
-sms-activate = []
+default = ["hero-sms", "tracing", "random"]
+hero-sms = []
 # Enable tracing instrumentation with OpenTelemetry support
 tracing = ["dep:tracing", "dep:tracing-opentelemetry", "dep:opentelemetry"]
 # Enable OpenTelemetry metrics support

@@ -6,24 +6,24 @@
 //! # Running
 //!
 //! ```bash
-//! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example basic_usage
+//! HERO_SMS_API_KEY=your_api_key cargo run --example basic_usage
 //! ```
 
-use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
 use sms_solvers::{Alpha2, SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait};
 use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = env::var("SMS_ACTIVATE_API_KEY")
-        .expect("SMS_ACTIVATE_API_KEY environment variable must be set");
+    let api_key =
+        env::var("HERO_SMS_API_KEY").expect("HERO_SMS_API_KEY environment variable must be set");
 
     // Create the SMS Activate client
-    let client = SmsActivateClient::with_api_key(&api_key)?;
+    let client = HeroSms::with_api_key(&api_key)?;
 
     // Create the provider (service-agnostic)
-    let provider = SmsActivateProvider::new(client);
+    let provider = HeroSmsProvider::new(client);
 
     // Use the balanced preset (default) - 120s timeout, 3s poll interval
     // Other presets available: SmsSolverServiceConfig::fast(), SmsSolverServiceConfig::patient()

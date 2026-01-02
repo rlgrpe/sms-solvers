@@ -1,19 +1,19 @@
-//! SMS Activate provider implementation.
+//! Hero SMS provider implementation.
 //!
-//! This module provides integration with the SMS Activate service
+//! This module provides integration with the Hero SMS service
 //! for phone number verification.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use sms_solvers::providers::sms_activate::{SmsActivateProvider, SmsActivateClient, Service};
+//! use sms_solvers::providers::hero_sms::{HeroSmsProvider, HeroSms, Service};
 //! use sms_solvers::{SmsService, SmsServiceConfig, SmsServiceTrait, RetryableProvider};
 //! use std::time::Duration;
 //! use isocountry::CountryCode;
 //!
 //! // Create client and provider for WhatsApp verification
-//! let client = SmsActivateClient::with_api_key("your_api_key")?;
-//! let provider = SmsActivateProvider::new(client, Service::Whatsapp);
+//! let client = HeroSms::with_api_key("your_api_key")?;
+//! let provider = HeroSmsProvider::new(client, Service::Whatsapp);
 //!
 //! // Wrap with retry logic
 //! let retryable = RetryableProvider::new(provider);
@@ -43,8 +43,8 @@ pub mod services;
 pub mod types;
 
 // Re-export commonly used types
-pub use client::SmsActivateClient;
+pub use client::HeroSms;
 pub use countries::SmsCountryExt;
-pub use errors::SmsActivateError;
-pub use provider::SmsActivateProvider;
+pub use errors::HeroSmsError;
+pub use provider::HeroSmsProvider;
 pub use services::Service;

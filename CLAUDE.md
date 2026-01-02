@@ -12,7 +12,7 @@ cargo build --all-features
 cargo test --all-features
 
 # Test (integration tests - requires API key, consumes credits)
-SMS_ACTIVATE_API_KEY=your_key cargo test --test sms_activate_api -- --ignored
+HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored
 
 # Run a single test
 cargo test test_name --all-features
@@ -30,7 +30,7 @@ cargo fmt --all -- --check
 cargo build --examples --all-features
 
 # Run example
-SMS_ACTIVATE_API_KEY=your_key cargo run --example basic_usage
+HERO_SMS_API_KEY=your_key cargo run --example basic_usage
 ```
 
 ## Architecture
@@ -42,10 +42,10 @@ SmsSolverService<P>          High-level service with timeout/polling
 SmsRetryableProvider<P>      Optional retry wrapper (exponential backoff)
         │
         ▼
-    Provider                 Trait implemented by SmsActivateProvider, etc.
+    Provider                 Trait implemented by HeroSmsProvider, etc.
         │
         ▼
-  SmsActivateClient          HTTP client for SMS Activate API
+  HeroSms                    HTTP client for Hero SMS API
 ```
 
 ### Key Abstractions
@@ -62,20 +62,20 @@ SmsRetryableProvider<P>      Optional retry wrapper (exponential backoff)
 - **`RetryableError` trait** (`src/errors.rs`): Two-level retry classification - `is_retryable()` for same-task retries,
   `should_retry_operation()` for fresh attempts.
 
-### SMS Activate Provider
+### Hero SMS Provider
 
-- **Country mapping** (`src/providers/sms_activate/countries.rs`): Static JSON maps ISO country codes to SMS Activate
+- **Country mapping** (`src/providers/hero_sms/countries.rs`): Static JSON maps ISO country codes to Hero SMS
   numeric IDs. Uses `SmsCountryExt` trait extension.
 
-- **Error handling** (`src/providers/sms_activate/errors.rs`): Parses API error strings with regex, classifies into
+- **Error handling** (`src/providers/hero_sms/errors.rs`): Parses API error strings with regex, classifies into
   retryable vs permanent.
 
-- **Services** (`src/providers/sms_activate/services.rs`): Enum of supported services (WhatsApp, Instagram, etc.) with
+- **Services** (`src/providers/hero_sms/services.rs`): Enum of supported services (WhatsApp, Instagram, etc.) with
   `Other { code }` for custom services.
 
 ## Feature Flags
 
-- `sms-activate` (default): SMS Activate provider support
+- `hero-sms` (default): Hero SMS provider support
 - `tracing` (default): OpenTelemetry tracing instrumentation
 - `metrics`: OpenTelemetry metrics (counters, histograms)
 
