@@ -101,7 +101,7 @@ impl ServiceMetrics {
 ///
 /// ```rust,ignore
 /// use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait, Alpha2};
-/// use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, Service};
+/// use sms_solvers::hero_sms::{SmsActivateClient, SmsActivateProvider, Service};
 /// use std::time::Duration;
 ///
 /// // Create provider and service

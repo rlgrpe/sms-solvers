@@ -1,4 +1,4 @@
-//! Country code mapping for SMS Activate API.
+//! Country code mapping for Hero SMS API.
 
 use keshvar::{Alpha2, Country, CountryIterator};
 use once_cell::sync::Lazy;
@@ -9,16 +9,16 @@ use thiserror::Error;
 /// Error when mapping country codes.
 #[derive(Debug, Clone, Error)]
 pub enum CountryMapError {
-    /// Unknown SMS-Activate ID.
-    #[error("Unknown country for SMS-Activate id {id}")]
+    /// Unknown Hero SMS ID.
+    #[error("Unknown country for Hero SMS id {id}")]
     UnknownSmsId { id: u16 },
-    /// No SMS-Activate mapping for country.
-    #[error("No SMS-Activate mapping for country {}", country.iso_short_name())]
+    /// No Hero SMS mapping for country.
+    #[error("No Hero SMS mapping for country {}", country.iso_short_name())]
     NoSmsMapping { country: Box<Country> },
 }
 
-/// SMS Activate countries JSON embedded at compile time.
-static COUNTRIES_JSON: &str = include_str!("../../../assets/sms_activate_countries.json");
+/// Hero SMS countries JSON embedded at compile time.
+static COUNTRIES_JSON: &str = include_str!("../../../assets/hero_sms_countries.json");
 
 /// Name normalization for stable comparison.
 /// Converts to lowercase and removes punctuation/extra whitespace.
@@ -36,7 +36,7 @@ fn norm(s: &str) -> String {
 }
 
 /// Overrides: normalized SMS name -> ISO alpha-2 code
-/// Used where SMS-Activate names differ significantly from ISO standard names.
+/// Used where Hero SMS names differ significantly from ISO standard names.
 static NAME_OVERRIDES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     HashMap::from([
         // Primary mappings
@@ -92,11 +92,11 @@ static ISO_NAME2ALPHA2: Lazy<HashMap<String, Alpha2>> = Lazy::new(|| {
     m
 });
 
-/// Mapping from SMS Activate country IDs to Country.
-/// Built from sms_activate_countries.json at startup.
+/// Mapping from Hero SMS country IDs to Country.
+/// Built from hero_sms_countries.json at startup.
 pub static SMS_ID2COUNTRY: Lazy<HashMap<u16, Country>> = Lazy::new(|| {
     let raw: HashMap<String, Value> =
-        serde_json::from_str(COUNTRIES_JSON).expect("sms_activate_countries.json is invalid");
+        serde_json::from_str(COUNTRIES_JSON).expect("hero_sms_countries.json is invalid");
 
     let mut map = HashMap::with_capacity(raw.len());
 
@@ -132,7 +132,7 @@ pub static SMS_ID2COUNTRY: Lazy<HashMap<u16, Country>> = Lazy::new(|| {
     map
 });
 
-/// Reverse mapping: Alpha2 string -> SMS Activate ID.
+/// Reverse mapping: Alpha2 string -> Hero SMS ID.
 pub static COUNTRY2SMS_ID: Lazy<HashMap<String, u16>> = Lazy::new(|| {
     let mut m = HashMap::with_capacity(SMS_ID2COUNTRY.len());
     for (id, country) in SMS_ID2COUNTRY.iter() {
@@ -143,10 +143,10 @@ pub static COUNTRY2SMS_ID: Lazy<HashMap<String, u16>> = Lazy::new(|| {
 
 /// Extension trait for country code mapping.
 pub trait SmsCountryExt {
-    /// Get the SMS Activate country ID for this country.
+    /// Get the Hero SMS country ID for this country.
     fn sms_id(&self) -> Result<u16, CountryMapError>;
 
-    /// Get the Country for an SMS Activate ID.
+    /// Get the Country for a Hero SMS ID.
     fn from_sms_id(id: u16) -> Result<Country, CountryMapError>;
 }
 
@@ -341,7 +341,7 @@ mod tests {
             country: Box::new(Alpha2::AQ.to_country()),
         };
         assert!(err2.to_string().contains("Antarctica"));
-        assert!(err2.to_string().contains("No SMS-Activate mapping"));
+        assert!(err2.to_string().contains("No Hero SMS mapping"));
     }
 
     #[test]
@@ -349,13 +349,13 @@ mod tests {
         let result: Result<HashMap<String, Value>, _> = serde_json::from_str(COUNTRIES_JSON);
         assert!(
             result.is_ok(),
-            "sms_activate_countries.json should be valid JSON"
+            "hero_sms_countries.json should be valid JSON"
         );
 
         let data = result.unwrap();
         assert!(
             !data.is_empty(),
-            "sms_activate_countries.json should not be empty"
+            "hero_sms_countries.json should not be empty"
         );
     }
 }

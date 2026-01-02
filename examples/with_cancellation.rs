@@ -6,10 +6,10 @@
 //! # Running
 //!
 //! ```bash
-//! SMS_ACTIVATE_API_KEY=your_api_key cargo run --example with_cancellation
+//! HERO_SMS_API_KEY=your_api_key cargo run --example with_cancellation
 //! ```
 
-use sms_solvers::sms_activate::{Service, SmsActivateClient, SmsActivateProvider};
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
 use sms_solvers::{
     Alpha2, CancellationToken, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
     SmsSolverServiceError, SmsSolverServiceTrait,
@@ -20,12 +20,12 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = env::var("SMS_ACTIVATE_API_KEY")
-        .expect("SMS_ACTIVATE_API_KEY environment variable must be set");
+    let api_key =
+        env::var("HERO_SMS_API_KEY").expect("HERO_SMS_API_KEY environment variable must be set");
 
     // Create the SMS Activate client and provider
-    let client = SmsActivateClient::with_api_key(&api_key)?;
-    let provider = SmsActivateProvider::new(client);
+    let client = HeroSms::with_api_key(&api_key)?;
+    let provider = HeroSmsProvider::new(client);
     let retryable = SmsRetryableProvider::new(provider);
 
     // Use the patient preset for longer timeout

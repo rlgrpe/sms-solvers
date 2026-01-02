@@ -9,7 +9,7 @@
 //! cargo run --example country_mapping
 //! ```
 
-use sms_solvers::sms_activate::{SmsActivateClient, SmsActivateProvider, SmsCountryExt};
+use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, SmsCountryExt};
 use sms_solvers::{Alpha2, Country, DialCode, Provider};
 
 fn main() {
@@ -98,14 +98,14 @@ fn main() {
     // Demonstrate dial code blacklisting
     use std::collections::HashSet;
 
-    let client = SmsActivateClient::with_api_key("demo_key").unwrap();
+    let client = HeroSms::with_api_key("demo_key").unwrap();
 
     // Create provider with blacklisted dial codes
     let blacklist: HashSet<DialCode> = ["33", "49"]
         .iter()
         .map(|s| DialCode::new(s).unwrap())
         .collect();
-    let provider = SmsActivateProvider::with_blacklist(client, blacklist);
+    let provider = HeroSmsProvider::with_blacklist(client, blacklist);
 
     let test_codes = ["1", "33", "44", "49", "380"];
     println!("Blacklisted dial codes: 33 (France), 49 (Germany)\n");

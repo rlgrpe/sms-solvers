@@ -10,14 +10,14 @@
 //!
 //! | Provider | Feature | Website |
 //! |----------|---------|---------|
-//! | SMS Activate | `sms-activate` (default) | <https://sms-activate.org> |
+//! | Hero SMS | `hero-sms` (default) | <https://hero-sms.com> |
 //!
 //! ## Quick Start
 //!
 //! ```rust,ignore
 //! use sms_solvers::{
 //!     SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
-//!     sms_activate::{SmsActivateProvider, Service},
+//!     hero_sms::{HeroSmsProvider, Service},
 //!     SmsRetryableProvider, RetryConfig,
 //! };
 //! use std::time::Duration;
@@ -26,7 +26,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create provider with API key
-//!     let provider = SmsActivateProvider::new("your_api_key")?;
+//!     let provider = HeroSmsProvider::new("your_api_key")?;
 //!
 //!     // Wrap with retry logic
 //!     let retryable = SmsRetryableProvider::new(provider);
@@ -58,12 +58,12 @@
 //! SmsRetryableProvider<P>  (optional retry wrapper)
 //!         │
 //!         ▼
-//!     Provider          (trait: SmsActivateProvider, etc.)
+//!     Provider          (trait: HeroSmsProvider, etc.)
 //! ```
 //!
 //! ## Features
 //!
-//! - `sms-activate` - SMS Activate provider support (enabled by default)
+//! - `hero-sms` - Hero SMS provider support (enabled by default)
 //! - `tracing` - OpenTelemetry tracing instrumentation (enabled by default)
 
 mod errors;
@@ -100,28 +100,28 @@ pub use keshvar::{Alpha2, Country};
 // Re-export utility types
 pub use types::DialCodeToCountryError;
 
-/// SMS Activate provider types.
+/// Hero SMS provider types.
 ///
-/// This module provides integration with the SMS Activate service
+/// This module provides integration with the Hero SMS service
 /// for phone number verification.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::sms_activate::{SmsActivateProvider, SmsActivateClient, Service};
+/// use sms_solvers::hero_sms::{HeroSmsProvider, HeroSms, Service};
 /// use sms_solvers::{SmsSolverService, SmsSolverServiceTrait, SmsRetryableProvider};
 /// use isocountry::CountryCode;
 ///
-/// let client = SmsActivateClient::with_api_key("your_api_key")?;
-/// let provider = SmsActivateProvider::new(client);
+/// let client = HeroSms::with_api_key("your_api_key")?;
+/// let provider = HeroSmsProvider::new(client);
 /// let service = SmsSolverService::with_provider(SmsRetryableProvider::new(provider));
 ///
 /// let result = service.get_number(CountryCode::TUR, Service::Whatsapp).await?;
 /// let code = service.wait_for_sms_code(&result.task_id).await?;
 /// ```
-#[cfg(feature = "sms-activate")]
-pub mod sms_activate {
-    pub use crate::providers::sms_activate::{
-        Service, SmsActivateClient, SmsActivateError, SmsActivateProvider, SmsCountryExt,
+#[cfg(feature = "hero-sms")]
+pub mod hero_sms {
+    pub use crate::providers::hero_sms::{
+        HeroSms, HeroSmsError, HeroSmsProvider, Service, SmsCountryExt,
     };
 }

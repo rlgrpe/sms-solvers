@@ -1,18 +1,18 @@
-//! Response parsing for SMS Activate API.
+//! Response parsing for Hero SMS API.
 
-use super::errors::{SmsActivateServiceError, parse_sms_activate_error};
+use super::errors::{HeroSmsServiceError, parse_hero_sms_error};
 use serde::de::DeserializeOwned;
 
-/// Unified response type for SMS Activate API calls.
+/// Unified response type for Hero SMS API calls.
 #[derive(Debug)]
-pub enum SmsActivateResponse<T> {
+pub enum HeroSmsResponse<T> {
     Success(T),
-    Error(SmsActivateServiceError),
+    Error(HeroSmsServiceError),
 }
 
-impl<T> SmsActivateResponse<T> {
+impl<T> HeroSmsResponse<T> {
     /// Convert response into a Result for ergonomic error handling.
-    pub fn into_result(self) -> Result<T, SmsActivateServiceError> {
+    pub fn into_result(self) -> Result<T, HeroSmsServiceError> {
         match self {
             Self::Success(data) => Ok(data),
             Self::Error(e) => Err(e),
@@ -35,15 +35,15 @@ impl<T> SmsActivateResponse<T> {
     }
 }
 
-impl<T: DeserializeOwned> SmsActivateResponse<T> {
-    /// Parse SMS Activate response from raw text.
+impl<T: DeserializeOwned> HeroSmsResponse<T> {
+    /// Parse Hero SMS response from raw text.
     ///
-    /// This handles the SMS Activate API pattern where errors are returned
+    /// This handles the Hero SMS API pattern where errors are returned
     /// as plain text error codes (e.g., "NO_NUMBERS", "BAD_KEY") and
     /// success responses are JSON.
     pub fn from_text(text: &str) -> Result<Self, serde_json::Error> {
         // Check if this is an error response
-        if let Some(error) = parse_sms_activate_error(text) {
+        if let Some(error) = parse_hero_sms_error(text) {
             return Ok(Self::Error(error));
         }
 
@@ -55,15 +55,15 @@ impl<T: DeserializeOwned> SmsActivateResponse<T> {
 
 /// Response type for setStatus API which returns plain text.
 #[derive(Debug)]
-pub enum SmsActivateTextResponse {
+pub enum HeroSmsTextResponse {
     Success(String),
-    Error(SmsActivateServiceError),
+    Error(HeroSmsServiceError),
 }
 
-impl SmsActivateTextResponse {
+impl HeroSmsTextResponse {
     /// Parse response from raw text.
     pub fn from_text(text: &str) -> Self {
-        if let Some(error) = parse_sms_activate_error(text) {
+        if let Some(error) = parse_hero_sms_error(text) {
             Self::Error(error)
         } else {
             Self::Success(text.to_string())
@@ -71,7 +71,7 @@ impl SmsActivateTextResponse {
     }
 
     /// Convert to Result.
-    pub fn into_result(self) -> Result<String, SmsActivateServiceError> {
+    pub fn into_result(self) -> Result<String, HeroSmsServiceError> {
         match self {
             Self::Success(text) => Ok(text),
             Self::Error(e) => Err(e),
@@ -82,8 +82,8 @@ impl SmsActivateTextResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::sms_activate::errors::SmsActivateErrorCode;
-    use crate::providers::sms_activate::types::GetPhoneNumberResponse;
+    use crate::providers::hero_sms::errors::HeroSmsErrorCode;
+    use crate::providers::hero_sms::types::GetPhoneNumberResponse;
 
     #[test]
     fn test_json_response_success() {
@@ -99,7 +99,7 @@ mod tests {
             "activationOperator": "mts"
         }"#;
 
-        let response = SmsActivateResponse::<GetPhoneNumberResponse>::from_text(json).unwrap();
+        let response = HeroSmsResponse::<GetPhoneNumberResponse>::from_text(json).unwrap();
         assert!(response.is_success());
         let data = response.into_result().unwrap();
         assert_eq!(data.phone_number, "79001234567");
@@ -108,12 +108,12 @@ mod tests {
     #[test]
     fn test_json_response_error() {
         let text = "NO_NUMBERS";
-        let response = SmsActivateResponse::<GetPhoneNumberResponse>::from_text(text).unwrap();
+        let response = HeroSmsResponse::<GetPhoneNumberResponse>::from_text(text).unwrap();
         assert!(!response.is_success());
 
         match response.into_result() {
             Err(error) => {
-                assert_eq!(error.code, SmsActivateErrorCode::NoNumbers);
+                assert_eq!(error.code, HeroSmsErrorCode::NoNumbers);
             }
             Ok(_) => panic!("Expected error"),
         }
@@ -122,23 +122,23 @@ mod tests {
     #[test]
     fn test_text_response_success() {
         let text = "ACCESS_READY";
-        let response = SmsActivateTextResponse::from_text(text);
+        let response = HeroSmsTextResponse::from_text(text);
 
         match response {
-            SmsActivateTextResponse::Success(s) => assert_eq!(s, "ACCESS_READY"),
-            SmsActivateTextResponse::Error(_) => panic!("Expected success"),
+            HeroSmsTextResponse::Success(s) => assert_eq!(s, "ACCESS_READY"),
+            HeroSmsTextResponse::Error(_) => panic!("Expected success"),
         }
     }
 
     #[test]
     fn test_text_response_error() {
         let text = "BAD_KEY";
-        let response = SmsActivateTextResponse::from_text(text);
+        let response = HeroSmsTextResponse::from_text(text);
 
         match response {
-            SmsActivateTextResponse::Success(_) => panic!("Expected error"),
-            SmsActivateTextResponse::Error(e) => {
-                assert_eq!(e.code, SmsActivateErrorCode::BadKey);
+            HeroSmsTextResponse::Success(_) => panic!("Expected error"),
+            HeroSmsTextResponse::Error(e) => {
+                assert_eq!(e.code, HeroSmsErrorCode::BadKey);
             }
         }
     }

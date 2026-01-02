@@ -1,13 +1,13 @@
 //! Integration tests for country code mapping functionality.
 //!
 //! These tests verify that the country mapping works correctly across
-//! the SMS Activate countries JSON and the dial codes JSON.
+//! the Hero SMS countries JSON and the dial codes JSON.
 
 use keshvar::CountryIterator;
-use sms_solvers::sms_activate::SmsCountryExt;
+use sms_solvers::hero_sms::SmsCountryExt;
 use sms_solvers::{Alpha2, Country, DialCode};
 
-/// Test that popular countries have valid SMS Activate mappings.
+/// Test that popular countries have valid Hero SMS mappings.
 #[test]
 fn test_popular_countries_have_sms_mapping() {
     let popular_countries = [
@@ -70,10 +70,10 @@ fn test_country_sms_id_round_trip() {
     }
 }
 
-/// Test specific known SMS Activate IDs.
+/// Test specific known Hero SMS IDs.
 #[test]
-fn test_known_sms_activate_ids() {
-    // These IDs are from sms_activate_countries.json
+fn test_known_hero_sms_ids() {
+    // These IDs are from hero_sms_countries.json
     let known_mappings = [
         (1, Alpha2::UA),   // "1": "Ukraine"
         (16, Alpha2::GB),  // "16": "United Kingdom"
@@ -205,7 +205,7 @@ fn test_reasonable_country_count() {
 /// Test name override countries are correctly mapped.
 #[test]
 fn test_name_override_countries() {
-    // These countries have name differences between SMS-Activate and ISO
+    // These countries have name differences between Hero SMS and ISO
     let override_countries = [
         (187, Alpha2::US), // "USA" vs "United States of America"
         (16, Alpha2::GB),  // "United Kingdom" matches

@@ -40,7 +40,7 @@ pub type OnRetryCallback<E> = Arc<dyn Fn(&E, Duration) + Send + Sync>;
 ///
 /// ```rust,ignore
 /// use sms_solvers::{Provider, SmsRetryableProvider, RetryConfig};
-/// use sms_solvers::sms_activate::SmsActivateProvider;
+/// use sms_solvers::hero_sms::SmsActivateProvider;
 /// use std::time::Duration;
 ///
 /// let base_provider = SmsActivateProvider::new("api_key")?;

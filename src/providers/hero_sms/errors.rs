@@ -1,4 +1,4 @@
-//! Error types for SMS Activate provider.
+//! Error types for Hero SMS provider.
 
 use crate::errors::RetryableError;
 use crate::types::TaskId;
@@ -12,9 +12,9 @@ use thiserror::Error;
 #[cfg(feature = "tracing")]
 use tracing::warn;
 
-/// Error codes returned by SMS Activate service API.
+/// Error codes returned by Hero SMS service API.
 #[derive(Debug, Clone, PartialEq)]
-pub enum SmsActivateErrorCode {
+pub enum HeroSmsErrorCode {
     // === Transient / Server Errors (Retryable) ===
     /// No numbers available for the requested country/service.
     NoNumbers,
@@ -51,7 +51,7 @@ pub enum SmsActivateErrorCode {
     Unknown { raw: String },
 }
 
-impl SmsActivateErrorCode {
+impl HeroSmsErrorCode {
     /// Returns the API error code string representation.
     pub fn code_name(&self) -> &str {
         match self {
@@ -206,13 +206,13 @@ impl SmsActivateErrorCode {
     }
 }
 
-impl Display for SmsActivateErrorCode {
+impl Display for HeroSmsErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.code_name())
     }
 }
 
-impl Serialize for SmsActivateErrorCode {
+impl Serialize for HeroSmsErrorCode {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -221,7 +221,7 @@ impl Serialize for SmsActivateErrorCode {
     }
 }
 
-impl<'de> Deserialize<'de> for SmsActivateErrorCode {
+impl<'de> Deserialize<'de> for HeroSmsErrorCode {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -231,21 +231,21 @@ impl<'de> Deserialize<'de> for SmsActivateErrorCode {
     }
 }
 
-/// Error returned by SMS Activate service.
+/// Error returned by Hero SMS service.
 #[derive(Debug, Clone, Error)]
-#[error("SMS Activate service error: code={code}, description={description}")]
-pub struct SmsActivateServiceError {
+#[error("Hero SMS service error: code={code}, description={description}")]
+pub struct HeroSmsServiceError {
     /// Error code from the service.
-    pub code: SmsActivateErrorCode,
+    pub code: HeroSmsErrorCode,
     /// Human-readable description.
     pub description: String,
     /// Original raw response text.
     pub raw: String,
 }
 
-impl SmsActivateServiceError {
+impl HeroSmsServiceError {
     /// Create new service error from code and raw response.
-    pub fn new(code: SmsActivateErrorCode, raw: String) -> Self {
+    pub fn new(code: HeroSmsErrorCode, raw: String) -> Self {
         let description = code.description();
         Self {
             code,
@@ -255,31 +255,31 @@ impl SmsActivateServiceError {
     }
 }
 
-/// Parse SMS Activate error from API response text.
-pub(crate) fn parse_sms_activate_error(raw: &str) -> Option<SmsActivateServiceError> {
-    let code = SmsActivateErrorCode::from_raw(raw)?;
-    let error = SmsActivateServiceError::new(code, raw.to_string());
+/// Parse Hero SMS error from API response text.
+pub(crate) fn parse_hero_sms_error(raw: &str) -> Option<HeroSmsServiceError> {
+    let code = HeroSmsErrorCode::from_raw(raw)?;
+    let error = HeroSmsServiceError::new(code, raw.to_string());
 
     #[cfg(feature = "tracing")]
     warn!(
         code = %error.code,
         description = %error.description,
         raw = %raw,
-        "SMS Activate service returned error"
+        "Hero SMS service returned error"
     );
 
     Some(error)
 }
 
-/// Main error type for SMS Activate client operations.
+/// Main error type for Hero SMS client operations.
 #[derive(Debug, Error)]
-pub enum SmsActivateError {
+pub enum HeroSmsError {
     /// Failed to build HTTP client.
     #[error("Failed to build HTTP client: {0}")]
     BuildHttpClient(#[source] reqwest::Error),
 
-    /// Error building SMS Activate request URL.
-    #[error("Error building SMS Activate request URL: {0}")]
+    /// Error building Hero SMS request URL.
+    #[error("Error building Hero SMS request URL: {0}")]
     BuildRequestUrl(#[source] serde_urlencoded::ser::Error),
 
     /// Failed to send HTTP request.
@@ -290,9 +290,9 @@ pub enum SmsActivateError {
     #[error("Failed to parse response: {0}")]
     ParseResponse(#[source] reqwest::Error),
 
-    /// SMS Activate service error.
-    #[error("SMS Activate service error: {0}")]
-    Service(#[source] SmsActivateServiceError),
+    /// Hero SMS service error.
+    #[error("Hero SMS service error: {0}")]
+    Service(#[source] HeroSmsServiceError),
 
     /// Timeout waiting for SMS.
     #[error(
@@ -302,7 +302,7 @@ pub enum SmsActivateError {
     SolutionTimeout { timeout: Duration, task_id: TaskId },
 
     /// Failed to map country code.
-    #[error("No SMS-Activate mapping for country {}", country.iso_short_name())]
+    #[error("No Hero SMS mapping for country {}", country.iso_short_name())]
     CountryMapping { country: Box<keshvar::Country> },
 
     /// Failed to parse SetStatus response.
@@ -314,41 +314,41 @@ pub enum SmsActivateError {
     DeserializeJson(#[source] serde_json::Error),
 }
 
-pub type Result<T> = std::result::Result<T, SmsActivateError>;
+pub type Result<T> = std::result::Result<T, HeroSmsError>;
 
-impl RetryableError for SmsActivateError {
+impl RetryableError for HeroSmsError {
     fn is_retryable(&self) -> bool {
         match self {
             // Retryable service errors - temporary unavailability
-            SmsActivateError::Service(error) => error.code.is_retryable(),
+            HeroSmsError::Service(error) => error.code.is_retryable(),
             // Retryable HTTP/network errors
-            SmsActivateError::HttpRequest(_) => true,
+            HeroSmsError::HttpRequest(_) => true,
             // Non-retryable errors - permanent configuration or logic errors
-            SmsActivateError::BuildHttpClient(_)
-            | SmsActivateError::BuildRequestUrl(_)
-            | SmsActivateError::ParseResponse(_)
-            | SmsActivateError::SolutionTimeout { .. }
-            | SmsActivateError::CountryMapping { .. }
-            | SmsActivateError::FailedToParseSetStatusResponse { .. }
-            | SmsActivateError::DeserializeJson(_) => false,
+            HeroSmsError::BuildHttpClient(_)
+            | HeroSmsError::BuildRequestUrl(_)
+            | HeroSmsError::ParseResponse(_)
+            | HeroSmsError::SolutionTimeout { .. }
+            | HeroSmsError::CountryMapping { .. }
+            | HeroSmsError::FailedToParseSetStatusResponse { .. }
+            | HeroSmsError::DeserializeJson(_) => false,
         }
     }
 
     fn should_retry_operation(&self) -> bool {
         match self {
             // Service errors have their own logic
-            SmsActivateError::Service(error) => error.code.should_retry_operation(),
+            HeroSmsError::Service(error) => error.code.should_retry_operation(),
             // HTTP errors - retry the operation
-            SmsActivateError::HttpRequest(_) => true,
+            HeroSmsError::HttpRequest(_) => true,
             // Timeouts - fresh attempt might work
-            SmsActivateError::SolutionTimeout { .. } => true,
+            HeroSmsError::SolutionTimeout { .. } => true,
             // Configuration errors - won't work until fixed
-            SmsActivateError::BuildHttpClient(_)
-            | SmsActivateError::BuildRequestUrl(_)
-            | SmsActivateError::ParseResponse(_)
-            | SmsActivateError::CountryMapping { .. }
-            | SmsActivateError::FailedToParseSetStatusResponse { .. }
-            | SmsActivateError::DeserializeJson(_) => false,
+            HeroSmsError::BuildHttpClient(_)
+            | HeroSmsError::BuildRequestUrl(_)
+            | HeroSmsError::ParseResponse(_)
+            | HeroSmsError::CountryMapping { .. }
+            | HeroSmsError::FailedToParseSetStatusResponse { .. }
+            | HeroSmsError::DeserializeJson(_) => false,
         }
     }
 }
@@ -360,15 +360,15 @@ mod tests {
     #[test]
     fn test_parse_simple_errors() {
         let test_cases = vec![
-            ("NO_ACTIVATION", SmsActivateErrorCode::NoActivation),
-            ("ERROR_SQL", SmsActivateErrorCode::ErrorSql),
-            ("BAD_KEY", SmsActivateErrorCode::BadKey),
-            ("NO_NUMBERS", SmsActivateErrorCode::NoNumbers),
-            ("CHANNELS_LIMIT", SmsActivateErrorCode::ChannelsLimit),
+            ("NO_ACTIVATION", HeroSmsErrorCode::NoActivation),
+            ("ERROR_SQL", HeroSmsErrorCode::ErrorSql),
+            ("BAD_KEY", HeroSmsErrorCode::BadKey),
+            ("NO_NUMBERS", HeroSmsErrorCode::NoNumbers),
+            ("CHANNELS_LIMIT", HeroSmsErrorCode::ChannelsLimit),
         ];
 
         for (input, expected) in test_cases {
-            let error = parse_sms_activate_error(input).unwrap();
+            let error = parse_hero_sms_error(input).unwrap();
             assert_eq!(error.code, expected);
             assert_eq!(error.raw, input);
         }
@@ -377,10 +377,10 @@ mod tests {
     #[test]
     fn test_parse_banned_error() {
         let input = "BANNED:'2025-12-31 23:59:59'";
-        let error = parse_sms_activate_error(input).unwrap();
+        let error = parse_hero_sms_error(input).unwrap();
         assert_eq!(
             error.code,
-            SmsActivateErrorCode::Banned {
+            HeroSmsErrorCode::Banned {
                 until: "2025-12-31 23:59:59".to_string()
             }
         );
@@ -389,10 +389,10 @@ mod tests {
     #[test]
     fn test_parse_wrong_max_price() {
         let input = "WRONG_MAX_PRICE:10.5";
-        let error = parse_sms_activate_error(input).unwrap();
+        let error = parse_hero_sms_error(input).unwrap();
         assert_eq!(
             error.code,
-            SmsActivateErrorCode::WrongMaxPrice { min: Some(10.5) }
+            HeroSmsErrorCode::WrongMaxPrice { min: Some(10.5) }
         );
     }
 
@@ -407,7 +407,7 @@ mod tests {
 
         for response in success_responses {
             assert!(
-                parse_sms_activate_error(response).is_none(),
+                parse_hero_sms_error(response).is_none(),
                 "Success response '{}' should not be treated as an error",
                 response
             );
@@ -416,11 +416,11 @@ mod tests {
 
     #[test]
     fn test_retryable_errors() {
-        assert!(SmsActivateErrorCode::NoNumbers.is_retryable());
-        assert!(SmsActivateErrorCode::ErrorSql.is_retryable());
-        assert!(SmsActivateErrorCode::ChannelsLimit.is_retryable());
+        assert!(HeroSmsErrorCode::NoNumbers.is_retryable());
+        assert!(HeroSmsErrorCode::ErrorSql.is_retryable());
+        assert!(HeroSmsErrorCode::ChannelsLimit.is_retryable());
 
-        assert!(!SmsActivateErrorCode::BadKey.is_retryable());
-        assert!(!SmsActivateErrorCode::NoActivation.is_retryable());
+        assert!(!HeroSmsErrorCode::BadKey.is_retryable());
+        assert!(!HeroSmsErrorCode::NoActivation.is_retryable());
     }
 }
