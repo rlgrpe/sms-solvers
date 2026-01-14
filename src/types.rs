@@ -1,6 +1,7 @@
 //! Core types for SMS verification operations.
 
 use keshvar::Country;
+#[cfg(feature = "random")]
 use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{self, Display, Formatter};

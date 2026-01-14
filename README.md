@@ -21,7 +21,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.0" }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.1" }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -197,11 +197,13 @@ Enable optional features in `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.0", features = ["tracing"] }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.1", features = ["tracing"] }
 ```
 
 - `hero-sms` - Hero SMS provider support (enabled by default)
 - `tracing` - Enables tracing instrumentation and OpenTelemetry integration (enabled by default)
+- `native-tls` - Use native TLS backend (enabled by default)
+- `rustls-tls` - Use rustls TLS backend (alternative to native-tls)
 
 ## Public API
 
