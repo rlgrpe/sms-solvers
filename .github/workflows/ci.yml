@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings -D clippy::cognitive_complexity
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-features -- --show-output
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      - name: Generate coverage
+        run: cargo tarpaulin --all-features --out xml --output-dir coverage
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
+
+  unused-deps:
+    name: Unused Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-udeps
+
+      - name: Check unused dependencies
+        run: cargo +nightly udeps --all-features
+
+  tech-debt:
+    name: Tech Debt Scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for TODOs and FIXMEs
+        run: |
+          echo "## Tech Debt Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          TODO_COUNT=$(grep -rn "TODO" --include="*.rs" . | wc -l || echo "0")
+          FIXME_COUNT=$(grep -rn "FIXME" --include="*.rs" . | wc -l || echo "0")
+          HACK_COUNT=$(grep -rn "HACK" --include="*.rs" . | wc -l || echo "0")
+
+          echo "| Type | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TODO | $TODO_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| FIXME | $FIXME_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| HACK | $HACK_COUNT |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$FIXME_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### FIXMEs found:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -rn "FIXME" --include="*.rs" . >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  large-files:
+    name: Large Files Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for large files (>1MB)
+        run: |
+          LARGE_FILES=$(find . -type f -size +1M -not -path "./.git/*" -not -path "./target/*" || true)
+          if [ -n "$LARGE_FILES" ]; then
+            echo "::warning::Large files detected (>1MB):"
+            echo "$LARGE_FILES"
+          fi
+
+  msrv:
+    name: MSRV Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-msrv
+
+      - name: Check MSRV
+        run: cargo msrv verify || echo "::warning::MSRV check failed - consider setting rust-version in Cargo.toml"
