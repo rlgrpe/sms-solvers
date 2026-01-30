@@ -211,7 +211,7 @@ impl HeroSms {
         {
             Span::current()
                 .record("task_id", data.task_id.as_ref())
-                .record("phone_number", &data.phone_number)
+                .record("phone_number", "[REDACTED]")
                 .set_status(Status::Ok);
         }
 
@@ -242,7 +242,7 @@ impl HeroSms {
             && !sms.code.is_empty()
         {
             Span::current()
-                .record("sms_code", sms.code.as_str())
+                .record("sms_code", "[REDACTED]")
                 .set_status(Status::Ok);
         }
 
