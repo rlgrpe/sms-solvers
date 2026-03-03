@@ -106,7 +106,7 @@ use sms_solvers::hero_sms::{HeroSmsProvider, Service};
 let provider = HeroSmsProvider::new(client);
 
 // Get a phone number
-let (task_id, full_number) = provider
+let (task_id, full_number, _dial_code) = provider
 .get_phone_number(Alpha2::US.to_country(), Service::Whatsapp)
 .await?;
 

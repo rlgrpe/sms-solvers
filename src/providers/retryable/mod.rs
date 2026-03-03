@@ -40,10 +40,11 @@ pub type OnRetryCallback<E> = Arc<dyn Fn(&E, Duration) + Send + Sync>;
 ///
 /// ```rust,ignore
 /// use sms_solvers::{Provider, SmsRetryableProvider, RetryConfig};
-/// use sms_solvers::hero_sms::SmsActivateProvider;
+/// use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider};
 /// use std::time::Duration;
 ///
-/// let base_provider = SmsActivateProvider::new("api_key")?;
+/// let client = HeroSms::with_api_key("api_key")?;
+/// let base_provider = HeroSmsProvider::new(client);
 ///
 /// // With default retry config
 /// let provider = SmsRetryableProvider::new(base_provider.clone());
@@ -55,7 +56,7 @@ pub type OnRetryCallback<E> = Arc<dyn Fn(&E, Duration) + Send + Sync>;
 /// let provider = SmsRetryableProvider::with_config(base_provider, custom_config);
 ///
 /// // Now all operations automatically retry on transient errors
-/// let (task_id, number) = provider.get_phone_number(country, service).await?;
+/// let (task_id, number, _dial_code) = provider.get_phone_number(country, service).await?;
 /// ```
 pub struct SmsRetryableProvider<P: Provider> {
     inner: Arc<P>,

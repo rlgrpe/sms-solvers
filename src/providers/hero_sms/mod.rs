@@ -6,27 +6,21 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use sms_solvers::providers::hero_sms::{HeroSmsProvider, HeroSms, Service};
-//! use sms_solvers::{SmsService, SmsServiceConfig, SmsServiceTrait, RetryableProvider};
-//! use std::time::Duration;
-//! use isocountry::CountryCode;
+//! use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
+//! use sms_solvers::{SmsSolverService, SmsRetryableProvider, SmsSolverServiceTrait, Alpha2};
 //!
-//! // Create client and provider for WhatsApp verification
+//! // Create client and provider
 //! let client = HeroSms::with_api_key("your_api_key")?;
-//! let provider = HeroSmsProvider::new(client, Service::Whatsapp);
+//! let provider = HeroSmsProvider::new(client);
 //!
 //! // Wrap with retry logic
-//! let retryable = RetryableProvider::new(provider);
+//! let retryable = SmsRetryableProvider::new(provider);
 //!
 //! // Create service
-//! let config = SmsServiceConfig {
-//!     wait_sms_code_timeout: Duration::from_secs(120),
-//!     poll_interval: Duration::from_secs(3),
-//! };
-//! let service = SmsService::new(retryable, config);
+//! let service = SmsSolverService::with_provider(retryable);
 //!
-//! // Get a phone number
-//! let result = service.get_number(CountryCode::TUR).await?;
+//! // Get a phone number for WhatsApp
+//! let result = service.get_number(Alpha2::TR.to_country(), Service::Whatsapp).await?;
 //! println!("Got number: {}", result.full_number);
 //!
 //! // Wait for SMS code
