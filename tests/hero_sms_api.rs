@@ -121,10 +121,11 @@ async fn test_get_phone_number_ukraine() {
         .await;
 
     match result {
-        Ok((task_id, full_number)) => {
+        Ok((task_id, full_number, dial_code)) => {
             println!("Successfully got number:");
             println!("  Task ID: {}", task_id);
             println!("  Full number: {}", full_number);
+            println!("  API dial code: {:?}", dial_code);
 
             // Verify task_id is not empty
             assert!(!task_id.as_ref().is_empty(), "Task ID should not be empty");
@@ -275,7 +276,7 @@ async fn test_get_sms_status() {
         .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)
         .await;
 
-    if let Ok((task_id, full_number)) = result {
+    if let Ok((task_id, full_number, _dial_code)) = result {
         println!("Got number: {} (task: {})", full_number, task_id);
 
         // Check SMS status (should be None since no SMS was sent)

@@ -4,7 +4,9 @@ use super::countries::SmsCountryExt;
 use super::errors::{HeroSmsError, Result};
 use super::response::{HeroSmsResponse, HeroSmsTextResponse};
 use super::services::Service;
-use super::types::{ActivationStatus, GetPhoneNumberResponse, GetSmsResponse, SetStatusResponse};
+use super::types::{
+    ActivationStatus, GetNumberOptions, GetPhoneNumberResponse, GetSmsResponse, SetStatusResponse,
+};
 use crate::types::TaskId;
 use keshvar::Country;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -48,6 +50,7 @@ pub struct HeroSms {
     http_client: ClientWithMiddleware,
     api_key: SecretString,
     endpoint: Url,
+    ref_id: Option<String>,
 }
 
 impl std::fmt::Debug for HeroSms {
@@ -64,6 +67,7 @@ pub struct HeroSmsClientBuilder {
     api_key: String,
     endpoint: Option<Url>,
     http_client: Option<ClientWithMiddleware>,
+    ref_id: Option<String>,
 }
 
 impl HeroSmsClientBuilder {
@@ -73,6 +77,7 @@ impl HeroSmsClientBuilder {
             api_key: api_key.into(),
             endpoint: None,
             http_client: None,
+            ref_id: None,
         }
     }
 
@@ -85,6 +90,12 @@ impl HeroSmsClientBuilder {
     /// Set a custom HTTP client with middleware.
     pub fn http_client(mut self, client: ClientWithMiddleware) -> Self {
         self.http_client = Some(client);
+        self
+    }
+
+    /// Set a referral ID to include in number requests.
+    pub fn ref_id(mut self, ref_id: impl Into<String>) -> Self {
+        self.ref_id = Some(ref_id.into());
         self
     }
 
@@ -108,6 +119,7 @@ impl HeroSmsClientBuilder {
             http_client,
             api_key: SecretString::from(self.api_key),
             endpoint,
+            ref_id: self.ref_id,
         })
     }
 }
@@ -175,6 +187,7 @@ impl HeroSms {
     /// # Arguments
     /// * `country` - The country to get a phone number for
     /// * `service` - The service to use for verification (e.g., WhatsApp, Instagram)
+    /// * `options` - Optional request parameters (operator, maxPrice, etc.)
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
@@ -187,18 +200,37 @@ impl HeroSms {
         &self,
         country: Country,
         service: Service,
+        options: Option<&GetNumberOptions>,
     ) -> Result<GetPhoneNumberResponse> {
         let country_id = country.sms_id().map_err(|_| HeroSmsError::CountryMapping {
             country: Box::new(country),
         })?;
 
-        let url = self.build_request_url(
-            "getNumberV2",
-            vec![
-                ("service", service.code().to_string()),
-                ("country", country_id.to_string()),
-            ],
-        )?;
+        let mut params = vec![
+            ("service", service.code().to_string()),
+            ("country", country_id.to_string()),
+        ];
+
+        if let Some(ref_id) = &self.ref_id {
+            params.push(("ref", ref_id.clone()));
+        }
+
+        if let Some(opts) = options {
+            if let Some(operator) = &opts.operator {
+                params.push(("operator", operator.clone()));
+            }
+            if let Some(max_price) = opts.max_price {
+                params.push(("maxPrice", max_price.to_string()));
+            }
+            if let Some(fixed_price) = opts.fixed_price {
+                params.push(("fixedPrice", fixed_price.to_string()));
+            }
+            if let Some(phone_exception) = &opts.phone_exception {
+                params.push(("phoneException", phone_exception.clone()));
+            }
+        }
+
+        let url = self.build_request_url("getNumberV2", params)?;
 
         let text = self.send_request(url).await?;
 
@@ -308,6 +340,7 @@ mod tests {
             "activationCost": 10.5,
             "currency": 643,
             "countryCode": "380",
+            "countryPhoneCode": 380,
             "canGetAnotherSms": true,
             "activationTime": "2025-01-01 12:00:00",
             "activationEndTime": "2025-01-01 12:20:00",
@@ -323,7 +356,7 @@ mod tests {
 
         let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client
-            .get_phone_number(Alpha2::UA.to_country(), Service::InstagramThreads)
+            .get_phone_number(Alpha2::UA.to_country(), Service::InstagramThreads, None)
             .await;
 
         assert!(result.is_ok());
@@ -345,7 +378,7 @@ mod tests {
 
         let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
         let result = client
-            .get_phone_number(Alpha2::UA.to_country(), Service::Whatsapp)
+            .get_phone_number(Alpha2::UA.to_country(), Service::Whatsapp, None)
             .await;
 
         assert!(result.is_err());

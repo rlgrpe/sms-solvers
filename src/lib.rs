@@ -122,6 +122,6 @@ pub use types::DialCodeToCountryError;
 #[cfg(feature = "hero-sms")]
 pub mod hero_sms {
     pub use crate::providers::hero_sms::{
-        HeroSms, HeroSmsError, HeroSmsProvider, Service, SmsCountryExt,
+        GetNumberOptions, HeroSms, HeroSmsError, HeroSmsProvider, Service, SmsCountryExt,
     };
 }

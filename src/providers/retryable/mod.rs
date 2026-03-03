@@ -153,7 +153,7 @@ where
         &self,
         country: Country,
         service: Self::Service,
-    ) -> Result<(TaskId, FullNumber), Self::Error> {
+    ) -> Result<(TaskId, FullNumber, Option<DialCode>), Self::Error> {
         let inner = Arc::clone(&self.inner);
         let on_retry = self.on_retry.clone();
         let country_name = country.iso_short_name().to_string();

@@ -4,7 +4,7 @@ use super::client::HeroSms;
 use super::countries::SMS_ID2COUNTRY;
 use super::errors::{HeroSmsError, Result};
 use super::services::Service;
-use super::types::ActivationStatus;
+use super::types::{ActivationStatus, GetNumberOptions};
 use crate::providers::traits::Provider;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
 use keshvar::Country;
@@ -36,15 +36,16 @@ use tracing::debug;
 /// let service = SmsSolverService::with_provider(retryable);
 ///
 /// // Get phone number for WhatsApp
-/// let (task_id, number) = provider.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
+/// let (task_id, number, _dial_code) = provider.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
 ///
 /// // Use the same provider for Instagram
-/// let (task_id2, number2) = provider.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
+/// let (task_id2, number2, _dial_code2) = provider.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
 /// ```
 #[derive(Debug, Clone)]
 pub struct HeroSmsProvider {
     client: HeroSms,
     blacklisted_dial_codes: HashSet<DialCode>,
+    options: Option<GetNumberOptions>,
 }
 
 impl HeroSmsProvider {
@@ -56,6 +57,7 @@ impl HeroSmsProvider {
         Self {
             client,
             blacklisted_dial_codes: HashSet::new(),
+            options: None,
         }
     }
 
@@ -66,7 +68,14 @@ impl HeroSmsProvider {
         Self {
             client,
             blacklisted_dial_codes: blacklist,
+            options: None,
         }
+    }
+
+    /// Set optional request parameters for number acquisition.
+    pub fn with_options(mut self, options: GetNumberOptions) -> Self {
+        self.options = Some(options);
+        self
     }
 
     /// Add a dial code to the blacklist.
@@ -106,10 +115,23 @@ impl Provider for HeroSmsProvider {
         &self,
         country: Country,
         service: Self::Service,
-    ) -> Result<(TaskId, FullNumber)> {
-        let response = self.client.get_phone_number(country, service).await?;
+    ) -> Result<(TaskId, FullNumber, Option<DialCode>)> {
+        let response = self
+            .client
+            .get_phone_number(country, service, self.options.as_ref())
+            .await?;
 
-        Ok((response.task_id, FullNumber::from(response.phone_number)))
+        let api_dial_code = if response.country_phone_code > 0 {
+            DialCode::new(response.country_phone_code.to_string()).ok()
+        } else {
+            None
+        };
+
+        Ok((
+            response.task_id,
+            FullNumber::from(response.phone_number),
+            api_dial_code,
+        ))
     }
 
     #[cfg_attr(
@@ -201,7 +223,8 @@ mod tests {
                 "canGetAnotherSms": true,
                 "activationTime": "2025-01-01 12:00:00",
                 "activationEndTime": "2025-01-01 12:20:00",
-                "activationOperator": "kyivstar"
+                "activationOperator": "kyivstar",
+                "countryPhoneCode": 380
             })))
             .mount(&mock_server)
             .await;
@@ -212,9 +235,10 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let (task_id, full_number) = result.unwrap();
+        let (task_id, full_number, dial_code) = result.unwrap();
         assert_eq!(task_id.as_ref(), "123456");
         assert_eq!(full_number.as_ref(), "380501234567");
+        assert_eq!(dial_code.unwrap().as_str(), "380");
     }
 
     #[tokio::test]

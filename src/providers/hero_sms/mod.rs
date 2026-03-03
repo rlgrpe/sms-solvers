@@ -48,3 +48,4 @@ pub use countries::SmsCountryExt;
 pub use errors::HeroSmsError;
 pub use provider::HeroSmsProvider;
 pub use services::Service;
+pub use types::GetNumberOptions;
