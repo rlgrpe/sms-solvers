@@ -1,10 +1,10 @@
 //! Error types for Hero SMS provider.
 
 use crate::errors::RetryableError;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{self, Display, Formatter};
+use std::sync::LazyLock;
 use thiserror::Error;
 
 #[cfg(feature = "tracing")]
@@ -121,18 +121,21 @@ impl HeroSmsErrorCode {
     /// Parse error codes with parameters (BANNED, WRONG_MAX_PRICE).
     fn parse_parametrized_error(s: &str) -> Option<Self> {
         // BANNED:'YYYY-m-d H-i-s'
-        static RE_BANNED: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"^BANNED\s*:\s*['"]([^'"]+)['"]$"#).unwrap());
+        static RE_BANNED: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r#"^BANNED\s*:\s*['"]([^'"]+)['"]$"#).unwrap());
         if let Some(cap) = RE_BANNED.captures(s) {
-            let until = cap.get(1).unwrap().as_str().to_string();
+            let until = cap.get(1).map(|m| m.as_str().to_string())?;
             return Some(Self::Banned { until });
         }
 
         // WRONG_MAX_PRICE:<num>
-        static RE_WRONG_MAX_PRICE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"^WRONG_MAX_PRICE\s*:\s*([0-9]+(?:\.[0-9]+)?)$"#).unwrap());
+        static RE_WRONG_MAX_PRICE: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r#"^WRONG_MAX_PRICE\s*:\s*([0-9]+(?:\.[0-9]+)?)$"#).unwrap()
+        });
         if let Some(cap) = RE_WRONG_MAX_PRICE.captures(s) {
-            let min = cap.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
+            let min = cap
+                .get(1)
+                .and_then(|m: regex::Match<'_>| m.as_str().parse::<f64>().ok());
             return Some(Self::WrongMaxPrice { min });
         }
 

@@ -1,6 +1,7 @@
 //! SMS provider implementations.
 
 pub(crate) mod capabilities;
+pub mod common;
 pub(crate) mod retryable;
 pub(crate) mod traits;
 
