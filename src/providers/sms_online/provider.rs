@@ -1,59 +1,36 @@
-//! Hero SMS provider implementation.
+//! SMS.online provider implementation.
 
-use super::client::HeroSms;
-use super::countries::SMS_ID2COUNTRY;
-use super::errors::{HeroSmsError, Result};
+use super::client::SmsOnline;
+use super::countries::SMS_ONLINE_ID2COUNTRY;
+use super::errors::{Result, SmsOnlineError};
 use super::services::Service;
-use super::types::{ActivationStatus, GetNumberOptions};
+use super::types::{ActivationStatus, GetNumberOptions, GetSmsStatusResponse};
 use crate::providers::traits::Provider;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
 use keshvar::Country;
 use std::collections::HashSet;
 
 #[cfg(feature = "tracing")]
-use tracing::debug;
+use tracing::{debug, warn};
 
-/// Hero SMS provider implementation.
+/// SMS.online provider implementation.
 ///
-/// This wraps the [`HeroSms`] and implements the generic [`Provider`] trait.
+/// This wraps the [`SmsOnline`] and implements the generic [`Provider`] trait.
 /// The service is passed at call time to `get_phone_number`, allowing a single provider
 /// to be used for multiple services.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
-/// use sms_solvers::{SmsSolverService, SmsRetryableProvider, Alpha2};
-///
-/// // Create client and provider
-/// let client = HeroSms::with_api_key("your_api_key")?;
-/// let provider = HeroSmsProvider::new(client);
-///
-/// // Optionally wrap with retry logic
-/// let retryable = SmsRetryableProvider::new(provider);
-///
-/// // Create service
-/// let service = SmsSolverService::with_provider(retryable);
-///
-/// // Get phone number for WhatsApp
-/// let (task_id, number, _dial_code) = provider.get_phone_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
-///
-/// // Use the same provider for Instagram
-/// let (task_id2, number2, _dial_code2) = provider.get_phone_number(Alpha2::DE.to_country(), Service::InstagramThreads).await?;
-/// ```
 #[derive(Debug, Clone)]
-pub struct HeroSmsProvider {
-    client: HeroSms,
+pub struct SmsOnlineProvider {
+    client: SmsOnline,
     blacklisted_dial_codes: HashSet<DialCode>,
     options: Option<GetNumberOptions>,
 }
 
-impl HeroSmsProvider {
-    /// Create a new Hero SMS provider.
+impl SmsOnlineProvider {
+    /// Create a new SMS.online provider.
     ///
     /// # Arguments
-    /// * `client` - The Hero SMS client to use
-    pub fn new(client: HeroSms) -> Self {
+    /// * `client` - The SMS.online client to use
+    pub fn new(client: SmsOnline) -> Self {
         Self {
             client,
             blacklisted_dial_codes: HashSet::new(),
@@ -61,10 +38,10 @@ impl HeroSmsProvider {
         }
     }
 
-    /// Create a new Hero SMS provider with a blacklist of dial codes.
+    /// Create a new SMS.online provider with a blacklist of dial codes.
     ///
     /// Numbers from blacklisted dial codes will not be used.
-    pub fn with_blacklist(client: HeroSms, blacklist: HashSet<DialCode>) -> Self {
+    pub fn with_blacklist(client: SmsOnline, blacklist: HashSet<DialCode>) -> Self {
         Self {
             client,
             blacklisted_dial_codes: blacklist,
@@ -89,7 +66,7 @@ impl HeroSmsProvider {
     }
 
     /// Get reference to the inner client.
-    pub fn client(&self) -> &HeroSms {
+    pub fn client(&self) -> &SmsOnline {
         &self.client
     }
 
@@ -99,14 +76,14 @@ impl HeroSmsProvider {
     }
 }
 
-impl Provider for HeroSmsProvider {
-    type Error = HeroSmsError;
+impl Provider for SmsOnlineProvider {
+    type Error = SmsOnlineError;
     type Service = Service;
 
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSmsProvider::get_phone_number",
+            name = "SmsOnlineProvider::get_phone_number",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -116,28 +93,34 @@ impl Provider for HeroSmsProvider {
         country: Country,
         service: Self::Service,
     ) -> Result<(TaskId, FullNumber, Option<DialCode>)> {
+        // SMS.online API doesn't return dial code separately, derive from requested country
+        let dial_code = DialCode::from(&country);
+
         let response = self
             .client
             .get_phone_number(country, service, self.options.as_ref())
             .await?;
 
-        let api_dial_code = if response.country_phone_code > 0 {
-            DialCode::new(response.country_phone_code.to_string()).ok()
-        } else {
-            None
-        };
+        #[cfg(feature = "tracing")]
+        if !response.phone_number.starts_with(dial_code.as_str()) {
+            warn!(
+                expected_prefix = dial_code.as_str(),
+                phone_number = "[REDACTED]",
+                "Phone number doesn't start with expected dial code"
+            );
+        }
 
         Ok((
             response.task_id,
             FullNumber::from(response.phone_number),
-            api_dial_code,
+            Some(dial_code),
         ))
     }
 
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSmsProvider::get_sms_code",
+            name = "SmsOnlineProvider::get_sms_code",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -145,13 +128,13 @@ impl Provider for HeroSmsProvider {
     async fn get_sms_code(&self, task_id: &TaskId) -> Result<Option<SmsCode>> {
         let response = self.client.get_sms_code(task_id).await?;
 
-        if let Some(sms) = &response.sms
-            && !sms.code.is_empty()
-        {
-            return Ok(Some(SmsCode::new(&sms.code)));
+        match response {
+            GetSmsStatusResponse::WaitCode | GetSmsStatusResponse::WaitResend => Ok(None),
+            GetSmsStatusResponse::Ok { code } => Ok(Some(SmsCode::new(&code))),
+            GetSmsStatusResponse::Cancel => Err(SmsOnlineError::ActivationCanceled {
+                task_id: task_id.clone(),
+            }),
         }
-
-        Ok(None)
     }
 
     async fn finish_activation(&self, task_id: &TaskId) -> Result<()> {
@@ -181,13 +164,13 @@ impl Provider for HeroSmsProvider {
     }
 
     fn supports_service(&self, _service: &Self::Service) -> bool {
-        // Hero SMS supports all services including custom ones
+        // SMS.online supports all services including custom ones
         true
     }
 
     fn available_countries(&self, _service: &Self::Service) -> Vec<Country> {
-        // Return all countries that have Hero SMS mapping
-        SMS_ID2COUNTRY.values().cloned().collect()
+        // Return all countries that have SMS.online mapping
+        SMS_ONLINE_ID2COUNTRY.values().cloned().collect()
     }
 
     fn supported_services(&self) -> Vec<Self::Service> {
@@ -202,9 +185,9 @@ mod tests {
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn create_test_provider(mock_server: &MockServer) -> HeroSmsProvider {
-        let client = HeroSms::new(mock_server.uri(), "test_key").unwrap();
-        HeroSmsProvider::new(client)
+    fn create_test_provider(mock_server: &MockServer) -> SmsOnlineProvider {
+        let client = SmsOnline::new(mock_server.uri(), "test_key").unwrap();
+        SmsOnlineProvider::new(client)
     }
 
     #[tokio::test]
@@ -212,20 +195,11 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(query_param("action", "getNumberV2"))
+            .and(query_param("action", "getNumber"))
             .and(query_param("service", "ig"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "activationId": "123456",
-                "phoneNumber": "380501234567",
-                "activationCost": 10.5,
-                "currency": 643,
-                "countryCode": "380",
-                "canGetAnotherSms": true,
-                "activationTime": "2025-01-01 12:00:00",
-                "activationEndTime": "2025-01-01 12:20:00",
-                "activationOperator": "kyivstar",
-                "countryPhoneCode": 380
-            })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("ACCESS_NUMBER:123456:380501234567"),
+            )
             .mount(&mock_server)
             .await;
 
@@ -246,14 +220,8 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(query_param("action", "getStatusV2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "sms": {
-                    "dateTime": "2025-01-01 12:05:00",
-                    "code": "123456",
-                    "text": "Your code is: 123456"
-                }
-            })))
+            .and(query_param("action", "getStatus"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("STATUS_OK:123456"))
             .mount(&mock_server)
             .await;
 
@@ -271,8 +239,8 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(query_param("action", "getStatusV2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .and(query_param("action", "getStatus"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("STATUS_WAIT_CODE"))
             .mount(&mock_server)
             .await;
 
@@ -281,6 +249,31 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_sms_code_cancelled() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(query_param("action", "getStatus"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("STATUS_CANCEL"))
+            .mount(&mock_server)
+            .await;
+
+        let provider = create_test_provider(&mock_server);
+        let task_id = TaskId::from("123");
+        let result = provider.get_sms_code(&task_id).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            SmsOnlineError::ActivationCanceled {
+                task_id: err_task_id,
+            } => {
+                assert_eq!(err_task_id, task_id);
+            }
+            other => panic!("Expected ActivationCanceled, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -302,8 +295,8 @@ mod tests {
 
     #[test]
     fn test_dial_code_blacklist() {
-        let client = HeroSms::with_api_key("test_key").unwrap();
-        let mut provider = HeroSmsProvider::new(client);
+        let client = SmsOnline::with_api_key("test_key").unwrap();
+        let mut provider = SmsOnlineProvider::new(client);
 
         let dial_code = DialCode::new("33").unwrap();
         assert!(provider.is_dial_code_supported(&dial_code));
@@ -317,8 +310,8 @@ mod tests {
 
     #[test]
     fn test_supports_service() {
-        let client = HeroSms::with_api_key("test_key").unwrap();
-        let provider = HeroSmsProvider::new(client);
+        let client = SmsOnline::with_api_key("test_key").unwrap();
+        let provider = SmsOnlineProvider::new(client);
 
         assert!(provider.supports_service(&Service::Whatsapp));
         assert!(provider.supports_service(&Service::InstagramThreads));
@@ -329,8 +322,8 @@ mod tests {
 
     #[test]
     fn test_available_countries() {
-        let client = HeroSms::with_api_key("test_key").unwrap();
-        let provider = HeroSmsProvider::new(client);
+        let client = SmsOnline::with_api_key("test_key").unwrap();
+        let provider = SmsOnlineProvider::new(client);
 
         let countries = provider.available_countries(&Service::Whatsapp);
         assert!(!countries.is_empty());
@@ -340,8 +333,8 @@ mod tests {
 
     #[test]
     fn test_supported_services() {
-        let client = HeroSms::with_api_key("test_key").unwrap();
-        let provider = HeroSmsProvider::new(client);
+        let client = SmsOnline::with_api_key("test_key").unwrap();
+        let provider = SmsOnlineProvider::new(client);
 
         let services = provider.supported_services();
         assert!(!services.is_empty());

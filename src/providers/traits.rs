@@ -39,7 +39,7 @@ use std::future::Future;
 ///     type Error = MyError;
 ///     type Service = MyService;
 ///
-///     async fn get_phone_number(&self, country: Country, service: Self::Service) -> Result<(TaskId, FullNumber), Self::Error> {
+///     async fn get_phone_number(&self, country: Country, service: Self::Service) -> Result<(TaskId, FullNumber, Option<DialCode>), Self::Error> {
 ///         // Get a phone number from the provider for the specified service
 ///     }
 ///
@@ -74,11 +74,12 @@ pub trait Provider: Send + Sync + Clone {
     /// # Returns
     /// * `task_id` - Unique identifier for this activation
     /// * `full_number` - The full phone number with country code
+    /// * `dial_code` - Optional dial code reported by the API (authoritative when present)
     fn get_phone_number(
         &self,
         country: Country,
         service: Self::Service,
-    ) -> impl Future<Output = Result<(TaskId, FullNumber), Self::Error>> + Send;
+    ) -> impl Future<Output = Result<(TaskId, FullNumber, Option<DialCode>), Self::Error>> + Send;
 
     /// Check if SMS code has been received for the given task.
     ///

@@ -13,6 +13,7 @@ cargo test --all-features
 
 # Test (integration tests - requires API key, consumes credits)
 HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored
+SMS_ONLINE_API_KEY=your_key cargo test --test sms_online_api -- --ignored
 
 # Run a single test
 cargo test test_name --all-features
@@ -42,10 +43,10 @@ SmsSolverService<P>          High-level service with timeout/polling
 SmsRetryableProvider<P>      Optional retry wrapper (exponential backoff)
         │
         ▼
-    Provider                 Trait implemented by HeroSmsProvider, etc.
+    Provider                 Trait implemented by HeroSmsProvider, SmsOnlineProvider
         │
         ▼
-  HeroSms                    HTTP client for Hero SMS API
+  HeroSms / SmsOnline        HTTP client for Hero SMS / SMS.online API
 ```
 
 ### Key Abstractions
@@ -73,9 +74,24 @@ SmsRetryableProvider<P>      Optional retry wrapper (exponential backoff)
 - **Services** (`src/providers/hero_sms/services.rs`): Enum of supported services (WhatsApp, Instagram, etc.) with
   `Other { code }` for custom services.
 
+### SMS.online Provider
+
+- **Country mapping** (`src/providers/sms_online/countries.rs`): Static JSON maps ISO country codes to SMS.online
+  numeric IDs. Uses `SmsOnlineCountryExt` trait extension.
+
+- **Error handling** (`src/providers/sms_online/errors.rs`): Parses API text responses, classifies into
+  retryable vs permanent errors.
+
+- **Services** (`src/providers/sms_online/services.rs`): Enum of supported services (WhatsApp, Instagram, etc.) with
+  `Other { code }` for custom services.
+
+- **Response parsing** (`src/providers/sms_online/response.rs`): Text-based response parsing (API returns
+  `ACCESS_NUMBER:id:phone`, `STATUS_OK:code`, etc.).
+
 ## Feature Flags
 
 - `hero-sms` (default): Hero SMS provider support
+- `sms-online` (default): SMS.online provider support
 - `tracing` (default): OpenTelemetry tracing instrumentation
 - `metrics`: OpenTelemetry metrics (counters, histograms)
 

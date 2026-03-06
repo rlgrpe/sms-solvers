@@ -27,6 +27,9 @@ pub struct GetPhoneNumberResponse {
     pub activation_end_time: String,
     /// Mobile operator name.
     pub activation_operator: String,
+    /// Country phone code (e.g. 62 for Indonesia, 380 for Ukraine).
+    /// This is the authoritative dial code from the API.
+    pub country_phone_code: u32,
 }
 
 /// Response from SMS Activate getStatusV2 API call.
@@ -138,6 +141,62 @@ impl Display for SetStatusResponse {
     }
 }
 
+/// Optional parameters for the `getNumberV2` API request.
+///
+/// These options allow fine-tuning which phone number is returned by the provider.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use sms_solvers::hero_sms::GetNumberOptions;
+///
+/// let options = GetNumberOptions::new()
+///     .with_max_price(5.0)
+///     .with_operator("megafon,beeline");
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct GetNumberOptions {
+    /// Comma-separated list of mobile operators to filter by.
+    pub operator: Option<String>,
+    /// Maximum price for the activation.
+    pub max_price: Option<f64>,
+    /// Whether to use fixed price (use together with `max_price`).
+    pub fixed_price: Option<bool>,
+    /// Phone exception filter (SMS-Activate compatibility).
+    pub phone_exception: Option<String>,
+}
+
+impl GetNumberOptions {
+    /// Create new empty options.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the operator filter (comma-separated list).
+    pub fn with_operator(mut self, operator: impl Into<String>) -> Self {
+        self.operator = Some(operator.into());
+        self
+    }
+
+    /// Set the maximum price for the activation.
+    pub fn with_max_price(mut self, max_price: f64) -> Self {
+        self.max_price = Some(max_price);
+        self
+    }
+
+    /// Set whether to use fixed price.
+    pub fn with_fixed_price(mut self, fixed_price: bool) -> Self {
+        self.fixed_price = Some(fixed_price);
+        self
+    }
+
+    /// Set the phone exception filter.
+    pub fn with_phone_exception(mut self, phone_exception: impl Into<String>) -> Self {
+        self.phone_exception = Some(phone_exception.into());
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,13 +232,15 @@ mod tests {
             "canGetAnotherSms": true,
             "activationTime": "2025-01-01 12:00:00",
             "activationEndTime": "2025-01-01 12:20:00",
-            "activationOperator": "kyivstar"
+            "activationOperator": "kyivstar",
+            "countryPhoneCode": 380
         }"#;
 
         let response: GetPhoneNumberResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.task_id.as_ref(), "123456789");
         assert_eq!(response.phone_number, "380501234567");
         assert_eq!(response.activation_cost, 10.5);
+        assert_eq!(response.country_phone_code, 380);
     }
 
     #[test]

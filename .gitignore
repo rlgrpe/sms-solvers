@@ -4,3 +4,4 @@ Cargo.lock
 .env
 tests/.env
 .claude
+.DS_Store

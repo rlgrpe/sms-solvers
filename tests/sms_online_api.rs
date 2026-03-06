@@ -1,4 +1,6 @@
-//! Integration tests for Hero SMS API.
+#![cfg(feature = "sms-online")]
+
+//! Integration tests for SMS.online API.
 //!
 //! These tests make real API calls and require a valid API key.
 //! They are ignored by default and should be run manually.
@@ -14,17 +16,17 @@
 //!
 //! 3. Run the tests:
 //!    ```bash
-//!    cargo test --test hero_sms_api -- --ignored
+//!    cargo test --test sms_online_api -- --ignored
 //!    ```
 //!
 //! Alternatively, pass the API key directly:
 //! ```bash
-//! HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored
+//! SMS_ONLINE_API_KEY=your_key cargo test --test sms_online_api -- --ignored
 //! ```
 //!
 //! **WARNING**: These tests will consume API credits!
 
-use sms_solvers::hero_sms::{HeroSms, HeroSmsError, HeroSmsProvider, Service};
+use sms_solvers::sms_online::{Service, SmsOnline, SmsOnlineError, SmsOnlineProvider};
 use sms_solvers::{
     Alpha2, Provider, RetryConfig, SmsRetryableProvider, SmsSolverService, SmsSolverServiceConfig,
     SmsSolverServiceTrait,
@@ -36,15 +38,13 @@ use std::time::Duration;
 const TEST_SERVICE: Service = Service::InstagramThreads;
 
 /// Helper to check if error is "no numbers available".
-fn is_no_numbers_error(err: &HeroSmsError) -> bool {
-    use sms_solvers::hero_sms::HeroSmsError as E;
-    matches!(err, E::Service(e) if e.code.code_name() == "NO_NUMBERS")
+fn is_no_numbers_error(err: &SmsOnlineError) -> bool {
+    matches!(err, SmsOnlineError::Service(e) if e.code.code_name() == "NO_NUMBERS")
 }
 
 /// Helper to check if error is authentication related.
-fn is_auth_error(err: &HeroSmsError) -> bool {
-    use sms_solvers::hero_sms::HeroSmsError as E;
-    matches!(err, E::Service(e) if e.code.code_name() == "BAD_KEY" || e.code.code_name() == "BAD_ACTION")
+fn is_auth_error(err: &SmsOnlineError) -> bool {
+    matches!(err, SmsOnlineError::Service(e) if e.code.code_name() == "BAD_KEY" || e.code.code_name() == "BAD_ACTION")
 }
 
 /// Get API key from environment or .env file.
@@ -52,27 +52,27 @@ fn get_api_key() -> String {
     // Try to load from tests/.env file
     dotenvy::dotenv().ok();
 
-    env::var("HERO_SMS_API_KEY").expect(
-        "HERO_SMS_API_KEY environment variable must be set.\n\
+    env::var("SMS_ONLINE_API_KEY").expect(
+        "SMS_ONLINE_API_KEY environment variable must be set.\n\
          Either:\n\
          1. Copy tests/.env.example to tests/.env and add your API key\n\
-         2. Run with: HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored",
+         2. Run with: SMS_ONLINE_API_KEY=your_key cargo test --test sms_online_api -- --ignored",
     )
 }
 
 /// Create a test client with the API key from environment.
-fn create_client() -> HeroSms {
+fn create_client() -> SmsOnline {
     let api_key = get_api_key();
-    HeroSms::with_api_key(&api_key).expect("Failed to create client")
+    SmsOnline::with_api_key(&api_key).expect("Failed to create client")
 }
 
 /// Create a test provider.
-fn create_provider() -> HeroSmsProvider {
-    HeroSmsProvider::new(create_client())
+fn create_provider() -> SmsOnlineProvider {
+    SmsOnlineProvider::new(create_client())
 }
 
 /// Create a test service with default config.
-fn create_service() -> SmsSolverService<HeroSmsProvider> {
+fn create_service() -> SmsSolverService<SmsOnlineProvider> {
     let provider = create_provider();
     let config = SmsSolverServiceConfig::default()
         .with_timeout(Duration::from_secs(60))
@@ -81,7 +81,7 @@ fn create_service() -> SmsSolverService<HeroSmsProvider> {
 }
 
 /// Create a service with retry wrapper.
-fn create_retryable_service() -> SmsSolverService<SmsRetryableProvider<HeroSmsProvider>> {
+fn create_retryable_service() -> SmsSolverService<SmsRetryableProvider<SmsOnlineProvider>> {
     let provider = create_provider();
     let retry_config = RetryConfig::default()
         .with_min_delay(Duration::from_millis(500))
@@ -244,8 +244,8 @@ async fn test_service_with_retry() {
 #[tokio::test]
 #[ignore = "tests error handling"]
 async fn test_invalid_api_key() {
-    let client = HeroSms::with_api_key("invalid_key_12345").unwrap();
-    let provider = HeroSmsProvider::new(client);
+    let client = SmsOnline::with_api_key("invalid_key_12345").unwrap();
+    let provider = SmsOnlineProvider::new(client);
 
     let result = provider
         .get_phone_number(Alpha2::UA.to_country(), TEST_SERVICE)

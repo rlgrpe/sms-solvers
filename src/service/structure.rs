@@ -267,7 +267,7 @@ where
             .numbers_requested
             .add(1, &[KeyValue::new("country", country_alpha2.clone())]);
 
-        let (task_id, full_number) = self
+        let (task_id, full_number, api_dial_code) = self
             .provider
             .get_phone_number(country.clone(), service)
             .await
@@ -289,7 +289,7 @@ where
                 }
             })?;
 
-        let dial_code = DialCode::from(&country);
+        let dial_code = api_dial_code.unwrap_or_else(|| DialCode::from(&country));
 
         // Check if the dial code is blacklisted
         if !self.provider.is_dial_code_supported(&dial_code) {
@@ -615,7 +615,9 @@ mod tests {
     #[derive(Clone)]
     #[allow(clippy::type_complexity)]
     struct MockProvider {
-        get_number_result: Arc<std::sync::Mutex<Option<Result<(TaskId, FullNumber), MockError>>>>,
+        get_number_result: Arc<
+            std::sync::Mutex<Option<Result<(TaskId, FullNumber, Option<DialCode>), MockError>>>,
+        >,
         sms_code_results: Arc<std::sync::Mutex<Vec<Result<Option<SmsCode>, MockError>>>>,
         cancel_result: Arc<std::sync::Mutex<Option<Result<(), MockError>>>>,
         poll_count: Arc<AtomicU32>,
@@ -651,7 +653,7 @@ mod tests {
 
         fn with_number(self, task_id: &str, number: &str) -> Self {
             *self.get_number_result.lock().unwrap() =
-                Some(Ok((TaskId::new(task_id), FullNumber::new(number))));
+                Some(Ok((TaskId::new(task_id), FullNumber::new(number), None)));
             self
         }
 
@@ -685,7 +687,7 @@ mod tests {
             &self,
             _country: Country,
             _service: Self::Service,
-        ) -> Result<(TaskId, FullNumber), Self::Error> {
+        ) -> Result<(TaskId, FullNumber, Option<DialCode>), Self::Error> {
             self.get_number_result
                 .lock()
                 .unwrap()
