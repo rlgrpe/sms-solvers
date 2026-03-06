@@ -76,7 +76,7 @@ mod utils;
 pub use errors::RetryableError;
 
 // Re-export provider types
-pub use providers::{Provider, SmsRetryableProvider};
+pub use providers::{Provider, ProviderCapabilities, SmsRetryableProvider};
 
 // Re-export service types
 pub use service::{

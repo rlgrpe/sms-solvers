@@ -179,25 +179,30 @@ impl Provider for HeroSmsProvider {
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
         !self.blacklisted_dial_codes.contains(dial_code)
     }
+}
 
-    fn supports_service(&self, _service: &Self::Service) -> bool {
-        // Hero SMS supports all services including custom ones
-        true
+impl crate::providers::capabilities::ProviderCapabilities for HeroSmsProvider {
+    type Service = Service;
+
+    fn supports_service(&self, _service: &Self::Service) -> Option<bool> {
+        // Hero SMS doesn't provide a reliable way to check per-service support.
+        None
     }
 
-    fn available_countries(&self, _service: &Self::Service) -> Vec<Country> {
-        // Return all countries that have Hero SMS mapping
-        SMS_ID2COUNTRY.values().cloned().collect()
+    fn available_countries(&self, _service: &Self::Service) -> Option<Vec<Country>> {
+        // Static mapping of countries with Hero SMS IDs — not per-service.
+        Some(SMS_ID2COUNTRY.values().cloned().collect())
     }
 
-    fn supported_services(&self) -> Vec<Self::Service> {
-        Service::all()
+    fn supported_services(&self) -> Option<Vec<Self::Service>> {
+        Some(Service::all())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::capabilities::ProviderCapabilities;
     use keshvar::Alpha2;
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -316,15 +321,13 @@ mod tests {
     }
 
     #[test]
-    fn test_supports_service() {
+    fn test_supports_service_returns_none() {
         let client = HeroSms::with_api_key("test_key").unwrap();
         let provider = HeroSmsProvider::new(client);
 
-        assert!(provider.supports_service(&Service::Whatsapp));
-        assert!(provider.supports_service(&Service::InstagramThreads));
-        assert!(provider.supports_service(&Service::Other {
-            code: "custom".to_string()
-        }));
+        // Hero SMS cannot reliably check per-service support
+        assert_eq!(provider.supports_service(&Service::Whatsapp), None);
+        assert_eq!(provider.supports_service(&Service::InstagramThreads), None);
     }
 
     #[test]
@@ -332,7 +335,7 @@ mod tests {
         let client = HeroSms::with_api_key("test_key").unwrap();
         let provider = HeroSmsProvider::new(client);
 
-        let countries = provider.available_countries(&Service::Whatsapp);
+        let countries = provider.available_countries(&Service::Whatsapp).unwrap();
         assert!(!countries.is_empty());
         assert!(countries.iter().any(|c| c.alpha2() == Alpha2::US));
         assert!(countries.iter().any(|c| c.alpha2() == Alpha2::UA));
@@ -343,7 +346,7 @@ mod tests {
         let client = HeroSms::with_api_key("test_key").unwrap();
         let provider = HeroSmsProvider::new(client);
 
-        let services = provider.supported_services();
+        let services = provider.supported_services().unwrap();
         assert!(!services.is_empty());
         assert!(services.contains(&Service::Whatsapp));
         assert!(services.contains(&Service::InstagramThreads));

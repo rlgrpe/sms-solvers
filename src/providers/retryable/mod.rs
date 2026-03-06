@@ -1,5 +1,6 @@
 //! Retryable provider wrapper.
 
+use super::capabilities::ProviderCapabilities;
 use super::traits::Provider;
 use crate::errors::RetryableError;
 use crate::types::{DialCode, FullNumber, SmsCode, TaskId};
@@ -231,16 +232,24 @@ where
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
         self.inner.is_dial_code_supported(dial_code)
     }
+}
 
-    fn supports_service(&self, service: &Self::Service) -> bool {
+impl<P> ProviderCapabilities for SmsRetryableProvider<P>
+where
+    P: Provider + ProviderCapabilities,
+    P::Error: Debug,
+{
+    type Service = <P as ProviderCapabilities>::Service;
+
+    fn supports_service(&self, service: &Self::Service) -> Option<bool> {
         self.inner.supports_service(service)
     }
 
-    fn available_countries(&self, service: &Self::Service) -> Vec<Country> {
+    fn available_countries(&self, service: &Self::Service) -> Option<Vec<Country>> {
         self.inner.available_countries(service)
     }
 
-    fn supported_services(&self) -> Vec<Self::Service> {
+    fn supported_services(&self) -> Option<Vec<Self::Service>> {
         self.inner.supported_services()
     }
 }
