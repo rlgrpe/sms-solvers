@@ -6,7 +6,6 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{self, Display, Formatter};
 use std::sync::LazyLock;
-use std::time::Duration;
 use thiserror::Error;
 
 #[cfg(feature = "tracing")]
@@ -244,12 +243,6 @@ pub enum SmsOnlineError {
     #[error("Activation was canceled (STATUS_CANCEL); task id: {task_id}")]
     ActivationCanceled { task_id: TaskId },
 
-    #[error(
-        "Timeout waiting for SMS after {:.1}s; Task id: {task_id}",
-        timeout.as_secs_f64()
-    )]
-    SolutionTimeout { timeout: Duration, task_id: TaskId },
-
     #[error("No SMS.online mapping for country {}", country.iso_short_name())]
     CountryMapping { country: Box<keshvar::Country> },
 
@@ -277,7 +270,6 @@ impl RetryableError for SmsOnlineError {
             | SmsOnlineError::BuildRequestUrl(_)
             | SmsOnlineError::ParseResponse(_)
             | SmsOnlineError::ActivationCanceled { .. }
-            | SmsOnlineError::SolutionTimeout { .. }
             | SmsOnlineError::CountryMapping { .. }
             | SmsOnlineError::FailedToParseGetNumberResponse { .. }
             | SmsOnlineError::FailedToParseGetStatusResponse { .. }
@@ -290,7 +282,6 @@ impl RetryableError for SmsOnlineError {
         match self {
             SmsOnlineError::Service(error) => error.code.should_retry_operation(),
             SmsOnlineError::HttpRequest(_) => true,
-            SmsOnlineError::SolutionTimeout { .. } => true,
             SmsOnlineError::BuildHttpClient(_)
             | SmsOnlineError::BuildRequestUrl(_)
             | SmsOnlineError::ParseResponse(_)

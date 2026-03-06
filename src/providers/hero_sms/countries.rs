@@ -1,9 +1,9 @@
 //! Country code mapping for Hero SMS API.
 
-use keshvar::{Alpha2, Country, CountryIterator};
-use once_cell::sync::Lazy;
-use serde_json::Value;
+use crate::providers::common::countries::{build_country_to_id_map, build_id_to_country_map};
+use keshvar::Country;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use thiserror::Error;
 
 /// Error when mapping country codes.
@@ -20,126 +20,13 @@ pub enum CountryMapError {
 /// Hero SMS countries JSON embedded at compile time.
 static COUNTRIES_JSON: &str = include_str!("../../../assets/hero_sms_countries.json");
 
-/// Name normalization for stable comparison.
-/// Converts to lowercase and removes punctuation/extra whitespace.
-fn norm(s: &str) -> String {
-    const PUNCT: &[char] = &[
-        '\'', '"', '`', ',', '.', '-', '_', '(', ')', '\u{2018}',
-        '\u{2019}', // curly single quotes ' '
-        '\u{00B4}', // acute accent ´
-    ];
-    s.to_ascii_lowercase()
-        .replace(PUNCT, "")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Overrides: normalized SMS name -> ISO alpha-2 code
-/// Used where Hero SMS names differ significantly from ISO standard names.
-static NAME_OVERRIDES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
-    HashMap::from([
-        // Primary mappings
-        ("usa", "US"),
-        ("united states", "US"),
-        ("united kingdom", "GB"),
-        ("uae", "AE"),
-        // Name differences
-        ("vietnam", "VN"),
-        ("south korea", "KR"),
-        ("north korea", "KP"),
-        ("dr congo", "CD"),
-        ("ivory coast", "CI"),
-        ("czech", "CZ"),
-        ("moldova", "MD"),
-        ("laos", "LA"),
-        ("syria", "SY"),
-        ("iran", "IR"),
-        ("venezuela", "VE"),
-        ("tanzania", "TZ"),
-        ("bolivia", "BO"),
-        ("bosnia", "BA"),
-        ("brunei", "BN"),
-        ("palestine", "PS"),
-        ("taiwan", "TW"),
-        // Alternative/old names
-        ("swaziland", "SZ"),
-        ("cape verde", "CV"),
-        ("north macedonia", "MK"),
-        ("timor leste", "TL"),
-        ("timorleste", "TL"),
-        // Abbreviations
-        ("salvador", "SV"),
-        ("papua", "PG"),
-        // Diacritics removed
-        ("reunion", "RE"),
-        // Region codes
-        ("hong kong", "HK"),
-        ("macao", "MO"),
-        ("puerto rico", "PR"),
-        // Name changes
-        ("turkey", "TR"),
-    ])
-});
-
-/// ISO standard names: normalized ISO name -> Alpha2
-/// Built from keshvar at startup.
-static ISO_NAME2ALPHA2: Lazy<HashMap<String, Alpha2>> = Lazy::new(|| {
-    let mut m = HashMap::new();
-    for country in CountryIterator::new() {
-        m.insert(norm(country.iso_short_name()), country.alpha2());
-    }
-    m
-});
-
 /// Mapping from Hero SMS country IDs to Country.
-/// Built from hero_sms_countries.json at startup.
-pub static SMS_ID2COUNTRY: Lazy<HashMap<u16, Country>> = Lazy::new(|| {
-    let raw: HashMap<String, Value> =
-        serde_json::from_str(COUNTRIES_JSON).expect("hero_sms_countries.json is invalid");
-
-    let mut map = HashMap::with_capacity(raw.len());
-
-    for (id_str, name_val) in raw {
-        let Ok(id) = id_str.parse::<u16>() else {
-            continue;
-        };
-        let Some(name) = name_val.as_str() else {
-            continue;
-        };
-
-        let key = norm(name);
-
-        // 1) First check overrides for known name differences
-        if let Some(&alpha2_str) = NAME_OVERRIDES.get(key.as_str())
-            && let Ok(country) = Country::try_from(alpha2_str)
-        {
-            map.insert(id, country);
-            continue;
-        }
-
-        // 2) Try to match against ISO standard name()
-        if let Some(&alpha2) = ISO_NAME2ALPHA2.get(&key) {
-            map.insert(id, alpha2.to_country());
-            continue;
-        }
-
-        // If no match found, skip but could log for debugging
-        #[cfg(feature = "tracing")]
-        tracing::debug!("No ISO match for SMS country name: '{name}' (id={id})");
-    }
-
-    map
-});
+pub static SMS_ID2COUNTRY: LazyLock<HashMap<u16, Country>> =
+    LazyLock::new(|| build_id_to_country_map(COUNTRIES_JSON, "hero_sms_countries.json"));
 
 /// Reverse mapping: Alpha2 string -> Hero SMS ID.
-pub static COUNTRY2SMS_ID: Lazy<HashMap<String, u16>> = Lazy::new(|| {
-    let mut m = HashMap::with_capacity(SMS_ID2COUNTRY.len());
-    for (id, country) in SMS_ID2COUNTRY.iter() {
-        m.entry(country.alpha2().to_string()).or_insert(*id);
-    }
-    m
-});
+pub static COUNTRY2SMS_ID: LazyLock<HashMap<String, u16>> =
+    LazyLock::new(|| build_country_to_id_map(&SMS_ID2COUNTRY));
 
 /// Extension trait for country code mapping.
 pub trait SmsCountryExt {
@@ -172,65 +59,11 @@ impl SmsCountryExt for Country {
 mod tests {
     use super::*;
     use keshvar::Alpha2;
-
-    #[test]
-    fn test_norm_basic() {
-        assert_eq!(norm("Russia"), "russia");
-        assert_eq!(norm("United States"), "united states");
-        assert_eq!(norm("SOUTH KOREA"), "south korea");
-    }
-
-    #[test]
-    fn test_norm_removes_punctuation() {
-        assert_eq!(norm("Saint-Martin"), "saintmartin");
-        assert_eq!(norm("Korea, South"), "korea south");
-        assert_eq!(norm("U.S.A."), "usa");
-        assert_eq!(norm("People's Republic"), "peoples republic");
-    }
-
-    #[test]
-    fn test_norm_multiple_spaces() {
-        assert_eq!(norm("United   States"), "united states");
-        assert_eq!(norm("  Russia  "), "russia");
-    }
-
-    #[test]
-    fn test_name_overrides_present() {
-        assert!(NAME_OVERRIDES.contains_key("usa"));
-        assert!(NAME_OVERRIDES.contains_key("united kingdom"));
-        assert!(NAME_OVERRIDES.contains_key("uae"));
-        assert!(NAME_OVERRIDES.contains_key("czech"));
-    }
-
-    #[test]
-    fn test_name_overrides_correct() {
-        assert_eq!(NAME_OVERRIDES.get("usa"), Some(&"US"));
-        assert_eq!(NAME_OVERRIDES.get("united kingdom"), Some(&"GB"));
-        assert_eq!(NAME_OVERRIDES.get("uae"), Some(&"AE"));
-        assert_eq!(NAME_OVERRIDES.get("ivory coast"), Some(&"CI"));
-    }
-
-    #[test]
-    fn test_iso_name2alpha2_populated() {
-        assert!(!ISO_NAME2ALPHA2.is_empty());
-        assert!(ISO_NAME2ALPHA2.contains_key("ukraine"));
-        assert!(ISO_NAME2ALPHA2.contains_key("germany"));
-        assert!(ISO_NAME2ALPHA2.contains_key("france"));
-        assert!(ISO_NAME2ALPHA2.contains_key("japan"));
-    }
-
-    #[test]
-    fn test_iso_name2alpha2_values() {
-        assert_eq!(ISO_NAME2ALPHA2.get("ukraine"), Some(&Alpha2::UA));
-        assert_eq!(ISO_NAME2ALPHA2.get("germany"), Some(&Alpha2::DE));
-        assert_eq!(ISO_NAME2ALPHA2.get("france"), Some(&Alpha2::FR));
-        assert_eq!(ISO_NAME2ALPHA2.get("japan"), Some(&Alpha2::JP));
-    }
+    use serde_json::Value;
 
     #[test]
     fn test_sms_id2country_populated() {
         assert!(!SMS_ID2COUNTRY.is_empty());
-        // Should have many countries mapped
         assert!(
             SMS_ID2COUNTRY.len() > 50,
             "Too few countries mapped: {}",
@@ -246,7 +79,6 @@ mod tests {
 
     #[test]
     fn test_country_to_sms_id() {
-        // Test countries from sms_activate_countries.json
         assert_eq!(Alpha2::UA.to_country().sms_id().unwrap(), 1);
         assert_eq!(Alpha2::GB.to_country().sms_id().unwrap(), 16);
         assert_eq!(Alpha2::US.to_country().sms_id().unwrap(), 187);
@@ -261,7 +93,6 @@ mod tests {
 
     #[test]
     fn test_unknown_country() {
-        // Antarctica doesn't have SMS service
         assert!(Alpha2::AQ.to_country().sms_id().is_err());
     }
 

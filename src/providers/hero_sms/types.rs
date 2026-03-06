@@ -17,8 +17,8 @@ pub struct GetPhoneNumberResponse {
     pub activation_cost: f64,
     /// Currency code (e.g., 643 for RUB).
     pub currency: i64,
-    /// Country calling code.
-    pub country_code: String,
+    /// Country calling code (e.g., 40 for Romania, 380 for Ukraine).
+    pub country_code: u32,
     /// Whether another SMS can be requested for this activation.
     pub can_get_another_sms: bool,
     /// When the activation started.
@@ -228,7 +228,7 @@ mod tests {
             "phoneNumber": "380501234567",
             "activationCost": 10.5,
             "currency": 643,
-            "countryCode": "380",
+            "countryCode": 380,
             "canGetAnotherSms": true,
             "activationTime": "2025-01-01 12:00:00",
             "activationEndTime": "2025-01-01 12:20:00",
@@ -240,7 +240,28 @@ mod tests {
         assert_eq!(response.task_id.as_ref(), "123456789");
         assert_eq!(response.phone_number, "380501234567");
         assert_eq!(response.activation_cost, 10.5);
+        assert_eq!(response.country_code, 380);
         assert_eq!(response.country_phone_code, 380);
+    }
+
+    #[test]
+    fn test_get_phone_number_response_country_code_integer() {
+        // Regression: API returns countryCode as integer (e.g., 40 for Romania)
+        let json = r#"{
+            "activationId": "987654321",
+            "phoneNumber": "40721234567",
+            "activationCost": 5.0,
+            "currency": 643,
+            "countryCode": 40,
+            "canGetAnotherSms": true,
+            "activationTime": "2025-01-01 12:00:00",
+            "activationEndTime": "2025-01-01 12:20:00",
+            "activationOperator": "vodafone",
+            "countryPhoneCode": 40
+        }"#;
+
+        let response: GetPhoneNumberResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.country_code, 40);
     }
 
     #[test]

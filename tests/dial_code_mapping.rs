@@ -10,16 +10,13 @@ use sms_solvers::DialCode;
 mod service_dial_code {
     use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider};
     use sms_solvers::{SmsSolverService, SmsSolverServiceConfig};
-    use std::time::Duration;
 
     /// Create a test service to access dial code functionality.
     pub fn create_test_service() -> SmsSolverService<HeroSmsProvider> {
         let client = HeroSms::with_api_key("test_key").unwrap();
         let provider = HeroSmsProvider::new(client);
-        let config = SmsSolverServiceConfig::default()
-            .with_timeout(Duration::from_secs(1))
-            .with_poll_interval(Duration::from_millis(100));
-        SmsSolverService::new(provider, config)
+        let config = SmsSolverServiceConfig::default();
+        SmsSolverService::try_new(provider, config).expect("valid config")
     }
 }
 

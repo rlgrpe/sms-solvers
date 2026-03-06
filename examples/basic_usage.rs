@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.validate()?;
 
     // Create the service
-    let service = SmsSolverService::new(provider, config);
+    let service = SmsSolverService::try_new(provider, config)?;
 
     // Request a phone number for Ukraine for Instagram verification
     println!("Requesting phone number for Ukraine (Instagram)...");

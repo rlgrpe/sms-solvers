@@ -77,7 +77,7 @@ fn create_service() -> SmsSolverService<HeroSmsProvider> {
     let config = SmsSolverServiceConfig::default()
         .with_timeout(Duration::from_secs(60))
         .with_poll_interval(Duration::from_secs(5));
-    SmsSolverService::new(provider, config)
+    SmsSolverService::try_new(provider, config).expect("valid config")
 }
 
 /// Create a service with retry wrapper.
@@ -92,7 +92,7 @@ fn create_retryable_service() -> SmsSolverService<SmsRetryableProvider<HeroSmsPr
     let config = SmsSolverServiceConfig::default()
         .with_timeout(Duration::from_secs(60))
         .with_poll_interval(Duration::from_secs(5));
-    SmsSolverService::new(retryable, config)
+    SmsSolverService::try_new(retryable, config).expect("valid config")
 }
 
 // =============================================================================

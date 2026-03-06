@@ -1,12 +1,10 @@
 //! Error types for Hero SMS provider.
 
 use crate::errors::RetryableError;
-use crate::types::TaskId;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{self, Display, Formatter};
-use std::time::Duration;
+use std::sync::LazyLock;
 use thiserror::Error;
 
 #[cfg(feature = "tracing")]
@@ -123,18 +121,32 @@ impl HeroSmsErrorCode {
     /// Parse error codes with parameters (BANNED, WRONG_MAX_PRICE).
     fn parse_parametrized_error(s: &str) -> Option<Self> {
         // BANNED:'YYYY-m-d H-i-s'
-        static RE_BANNED: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"^BANNED\s*:\s*['"]([^'"]+)['"]$"#).unwrap());
+        static RE_BANNED: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r#"^BANNED\s*:\s*['"]([^'"]+)['"]$"#).unwrap());
         if let Some(cap) = RE_BANNED.captures(s) {
-            let until = cap.get(1).unwrap().as_str().to_string();
+            let until = cap.get(1).map(|m| m.as_str().to_string())?;
             return Some(Self::Banned { until });
         }
 
         // WRONG_MAX_PRICE:<num>
-        static RE_WRONG_MAX_PRICE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"^WRONG_MAX_PRICE\s*:\s*([0-9]+(?:\.[0-9]+)?)$"#).unwrap());
+        static RE_WRONG_MAX_PRICE: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r#"^WRONG_MAX_PRICE\s*:\s*([0-9]+(?:\.[0-9]+)?)$"#).unwrap()
+        });
         if let Some(cap) = RE_WRONG_MAX_PRICE.captures(s) {
-            let min = cap.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
+            let min = cap
+                .get(1)
+                .and_then(|m: regex::Match<'_>| match m.as_str().parse::<f64>() {
+                    Ok(v) => Some(v),
+                    Err(_e) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::debug!(
+                            raw = %m.as_str(),
+                            error = %_e,
+                            "Failed to parse WRONG_MAX_PRICE min value"
+                        );
+                        None
+                    }
+                });
             return Some(Self::WrongMaxPrice { min });
         }
 
@@ -294,13 +306,6 @@ pub enum HeroSmsError {
     #[error("Hero SMS service error: {0}")]
     Service(#[source] HeroSmsServiceError),
 
-    /// Timeout waiting for SMS.
-    #[error(
-        "Timeout waiting for SMS after {:.1}s; Task id: {task_id}",
-        timeout.as_secs_f64()
-    )]
-    SolutionTimeout { timeout: Duration, task_id: TaskId },
-
     /// Failed to map country code.
     #[error("No Hero SMS mapping for country {}", country.iso_short_name())]
     CountryMapping { country: Box<keshvar::Country> },
@@ -327,7 +332,6 @@ impl RetryableError for HeroSmsError {
             HeroSmsError::BuildHttpClient(_)
             | HeroSmsError::BuildRequestUrl(_)
             | HeroSmsError::ParseResponse(_)
-            | HeroSmsError::SolutionTimeout { .. }
             | HeroSmsError::CountryMapping { .. }
             | HeroSmsError::FailedToParseSetStatusResponse { .. }
             | HeroSmsError::DeserializeJson(_) => false,
@@ -340,8 +344,6 @@ impl RetryableError for HeroSmsError {
             HeroSmsError::Service(error) => error.code.should_retry_operation(),
             // HTTP errors - retry the operation
             HeroSmsError::HttpRequest(_) => true,
-            // Timeouts - fresh attempt might work
-            HeroSmsError::SolutionTimeout { .. } => true,
             // Configuration errors - won't work until fixed
             HeroSmsError::BuildHttpClient(_)
             | HeroSmsError::BuildRequestUrl(_)

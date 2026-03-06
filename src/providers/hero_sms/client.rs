@@ -339,7 +339,7 @@ mod tests {
             "phoneNumber": "380501234567",
             "activationCost": 10.5,
             "currency": 643,
-            "countryCode": "380",
+            "countryCode": 380,
             "countryPhoneCode": 380,
             "canGetAnotherSms": true,
             "activationTime": "2025-01-01 12:00:00",
