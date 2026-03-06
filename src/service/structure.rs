@@ -489,7 +489,7 @@ where
 
                     #[cfg(feature = "tracing")]
                     info!(
-                        code = %code,
+                        code_len = code.as_str().len(),
                         elapsed_secs = %elapsed.as_secs_f64(),
                         poll_count = %poll_count,
                         "SMS code received"
