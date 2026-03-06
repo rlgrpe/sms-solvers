@@ -118,14 +118,16 @@ where
         &self.config
     }
 
-    /// Get mutable reference to the service configuration.
-    pub fn config_mut(&mut self) -> &mut SmsSolverServiceConfig {
-        &mut self.config
-    }
-
     /// Update the service configuration.
-    pub fn set_config(&mut self, config: SmsSolverServiceConfig) {
+    ///
+    /// Returns an error if the new configuration is invalid.
+    pub fn set_config(
+        &mut self,
+        config: SmsSolverServiceConfig,
+    ) -> Result<(), super::config::ConfigError> {
+        config.validate()?;
         self.config = config;
+        Ok(())
     }
 
     /// Filter dial codes to only include those supported by the provider.
@@ -250,6 +252,11 @@ where
             if let Err(e) = self.provider.cancel_activation(&task_id).await {
                 #[cfg(feature = "tracing")]
                 warn!(error = %e, "Failed to cancel activation for blacklisted number");
+
+                return Err(SmsSolverServiceError::CancelFailed {
+                    task_id,
+                    message: e.to_string(),
+                });
             }
 
             return Err(SmsSolverServiceError::DialCodeBlacklisted { dial_code, task_id });
@@ -460,7 +467,9 @@ where
 
                         return Err(SmsSolverServiceError::CancelFailed {
                             task_id: task_id.clone(),
-                            message: cancel_err.to_string(),
+                            message: format!(
+                                "original error: {e}; cancel also failed: {cancel_err}"
+                            ),
                         });
                     }
 

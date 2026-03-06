@@ -121,6 +121,24 @@ mod hero_sms_contract {
     }
 
     #[tokio::test]
+    async fn contract_finish_activation_succeeds() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(query_param("action", "setStatus"))
+            .and(query_param("status", "6"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ACCESS_ACTIVATION"))
+            .mount(&mock_server)
+            .await;
+
+        let provider = setup_provider(&mock_server);
+        provider
+            .finish_activation(&TaskId::from("42"))
+            .await
+            .expect("finish_activation should succeed");
+    }
+
+    #[tokio::test]
     async fn contract_no_numbers_error_is_retryable() {
         let mock_server = MockServer::start().await;
 
@@ -264,6 +282,24 @@ mod sms_online_contract {
             .cancel_activation(&TaskId::from("42"))
             .await
             .expect("cancel_activation should succeed");
+    }
+
+    #[tokio::test]
+    async fn contract_finish_activation_succeeds() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(query_param("action", "setStatus"))
+            .and(query_param("status", "6"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ACCESS_ACTIVATION"))
+            .mount(&mock_server)
+            .await;
+
+        let provider = setup_provider(&mock_server);
+        provider
+            .finish_activation(&TaskId::from("42"))
+            .await
+            .expect("finish_activation should succeed");
     }
 
     #[tokio::test]

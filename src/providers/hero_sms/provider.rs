@@ -11,7 +11,7 @@ use keshvar::Country;
 use std::collections::HashSet;
 
 #[cfg(feature = "tracing")]
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Hero SMS provider implementation.
 ///
@@ -122,7 +122,18 @@ impl Provider for HeroSmsProvider {
             .await?;
 
         let api_dial_code = if response.country_phone_code > 0 {
-            DialCode::new(response.country_phone_code.to_string()).ok()
+            match DialCode::new(response.country_phone_code.to_string()) {
+                Ok(dc) => Some(dc),
+                Err(_e) => {
+                    #[cfg(feature = "tracing")]
+                    warn!(
+                        country_phone_code = %response.country_phone_code,
+                        error = %_e,
+                        "Failed to parse API dial code, will derive from country"
+                    );
+                    None
+                }
+            }
         } else {
             None
         };

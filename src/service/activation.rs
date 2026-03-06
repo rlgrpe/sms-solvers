@@ -36,6 +36,7 @@ use tokio_util::sync::CancellationToken;
 pub struct ActivationHandle<P: Provider> {
     service: SmsSolverService<P>,
     result: SmsTaskResult,
+    consumed: std::cell::Cell<bool>,
 }
 
 impl<P: Provider> ActivationHandle<P>
@@ -43,7 +44,11 @@ where
     P::Error: Debug + Display + RetryableError + Send + Sync + 'static,
 {
     pub(crate) fn new(service: SmsSolverService<P>, result: SmsTaskResult) -> Self {
-        Self { service, result }
+        Self {
+            service,
+            result,
+            consumed: std::cell::Cell::new(false),
+        }
     }
 
     /// The unique task identifier for this activation.
@@ -73,7 +78,8 @@ where
 
     /// Consume the handle and return the underlying [`SmsTaskResult`].
     pub fn into_result(self) -> SmsTaskResult {
-        self.result
+        self.consumed.set(true);
+        self.result.clone()
     }
 
     /// Get a reference to the underlying [`SmsTaskResult`].
@@ -109,6 +115,7 @@ where
     /// Call this after you have used the SMS code.
     /// Consumes the handle to prevent further use.
     pub async fn finish(self) -> Result<(), SmsSolverServiceError> {
+        self.consumed.set(true);
         self.service
             .provider
             .finish_activation(&self.result.task_id)
@@ -129,6 +136,7 @@ where
     /// Call this when you no longer need the phone number.
     /// Consumes the handle to prevent further use.
     pub async fn cancel(self) -> Result<(), SmsSolverServiceError> {
+        self.consumed.set(true);
         self.service
             .provider
             .cancel_activation(&self.result.task_id)
@@ -142,6 +150,18 @@ where
                     should_retry_operation,
                 }
             })
+    }
+}
+
+impl<P: Provider> Drop for ActivationHandle<P> {
+    fn drop(&mut self) {
+        if !self.consumed.get() {
+            #[cfg(feature = "tracing")]
+            tracing::warn!(
+                task_id = %self.result.task_id,
+                "ActivationHandle dropped without calling finish(), cancel(), or into_result() — activation may have leaked"
+            );
+        }
     }
 }
 

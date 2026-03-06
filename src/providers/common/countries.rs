@@ -93,9 +93,21 @@ pub(crate) fn build_id_to_country_map(json: &str, asset_name: &str) -> HashMap<u
 
     for (id_str, name_val) in raw {
         let Ok(id) = id_str.parse::<u16>() else {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(
+                id = %id_str,
+                asset = %asset_name,
+                "Skipping entry: id is not a valid u16"
+            );
             continue;
         };
         let Some(name) = name_val.as_str() else {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(
+                id = %id_str,
+                asset = %asset_name,
+                "Skipping entry: value is not a string"
+            );
             continue;
         };
 

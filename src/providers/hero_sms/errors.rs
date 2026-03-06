@@ -135,7 +135,18 @@ impl HeroSmsErrorCode {
         if let Some(cap) = RE_WRONG_MAX_PRICE.captures(s) {
             let min = cap
                 .get(1)
-                .and_then(|m: regex::Match<'_>| m.as_str().parse::<f64>().ok());
+                .and_then(|m: regex::Match<'_>| match m.as_str().parse::<f64>() {
+                    Ok(v) => Some(v),
+                    Err(_e) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::debug!(
+                            raw = %m.as_str(),
+                            error = %_e,
+                            "Failed to parse WRONG_MAX_PRICE min value"
+                        );
+                        None
+                    }
+                });
             return Some(Self::WrongMaxPrice { min });
         }
 
