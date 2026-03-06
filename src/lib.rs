@@ -125,3 +125,12 @@ pub mod hero_sms {
         GetNumberOptions, HeroSms, HeroSmsError, HeroSmsProvider, Service, SmsCountryExt,
     };
 }
+
+/// SMS.online provider types.
+#[cfg(feature = "sms-online")]
+pub mod sms_online {
+    pub use crate::providers::sms_online::{
+        ActivationType, GetNumberOptions, ProviderSelection, Service, SmsOnline,
+        SmsOnlineCountryExt, SmsOnlineError, SmsOnlineProvider,
+    };
+}
