@@ -1,12 +1,10 @@
 //! Error types for Hero SMS provider.
 
 use crate::errors::RetryableError;
-use crate::types::TaskId;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{self, Display, Formatter};
-use std::time::Duration;
 use thiserror::Error;
 
 #[cfg(feature = "tracing")]
@@ -294,13 +292,6 @@ pub enum HeroSmsError {
     #[error("Hero SMS service error: {0}")]
     Service(#[source] HeroSmsServiceError),
 
-    /// Timeout waiting for SMS.
-    #[error(
-        "Timeout waiting for SMS after {:.1}s; Task id: {task_id}",
-        timeout.as_secs_f64()
-    )]
-    SolutionTimeout { timeout: Duration, task_id: TaskId },
-
     /// Failed to map country code.
     #[error("No Hero SMS mapping for country {}", country.iso_short_name())]
     CountryMapping { country: Box<keshvar::Country> },
@@ -327,7 +318,6 @@ impl RetryableError for HeroSmsError {
             HeroSmsError::BuildHttpClient(_)
             | HeroSmsError::BuildRequestUrl(_)
             | HeroSmsError::ParseResponse(_)
-            | HeroSmsError::SolutionTimeout { .. }
             | HeroSmsError::CountryMapping { .. }
             | HeroSmsError::FailedToParseSetStatusResponse { .. }
             | HeroSmsError::DeserializeJson(_) => false,
@@ -340,8 +330,6 @@ impl RetryableError for HeroSmsError {
             HeroSmsError::Service(error) => error.code.should_retry_operation(),
             // HTTP errors - retry the operation
             HeroSmsError::HttpRequest(_) => true,
-            // Timeouts - fresh attempt might work
-            HeroSmsError::SolutionTimeout { .. } => true,
             // Configuration errors - won't work until fixed
             HeroSmsError::BuildHttpClient(_)
             | HeroSmsError::BuildRequestUrl(_)
