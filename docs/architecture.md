@@ -2,19 +2,165 @@
 
 ## Layering
 
-```text
-SmsSolverService<P>          High-level service: timeout, polling, lifecycle
-    │
-    ├── ActivationHandle     User-facing lifecycle object (wait/finish/cancel)
-    │
-    ▼
-SmsRetryableProvider<P>      Optional retry decorator (exponential backoff)
-    │
-    ▼
-Provider trait               Core async interface: get_phone_number, get_sms_code,
-    │                        finish_activation, cancel_activation
-    ▼
-HeroSms / SmsOnline          HTTP client for the provider's REST API
+```mermaid
+classDiagram
+    direction TB
+
+    class Provider {
+        <<trait>>
+        +type Error
+        +type Service
+        +get_phone_number(country, service) Future~Result~
+        +get_sms_code(task_id) Future~Result~Option~~
+        +finish_activation(task_id) Future~Result~
+        +cancel_activation(task_id) Future~Result~
+        +is_dial_code_supported(dial_code) bool
+    }
+
+    class ProviderCapabilities {
+        <<trait>>
+        +type Service
+        +supports_service(service) Option~bool~
+        +available_countries(service) Option~Vec~Country~~
+        +supported_services() Option~Vec~Service~~
+    }
+
+    class SmsSolverService~P~ {
+        -provider: P
+        -config: SmsSolverServiceConfig
+        +try_new(provider, config) Result
+        +builder(provider) SmsSolverServiceBuilder
+        +activate(country, service) Result~ActivationHandle~
+        +get_number(country, service) Result~SmsTaskResult~
+        +wait_for_sms_code(task_id) Result~SmsCode~
+    }
+
+    class ActivationHandle~P~ {
+        -service: SmsSolverService~P~
+        -result: SmsTaskResult
+        +task_id() TaskId
+        +full_number() FullNumber
+        +wait_for_code() Result~SmsCode~
+        +finish() Result
+        +cancel() Result
+    }
+
+    class SmsRetryableProvider~P~ {
+        -inner: Arc~P~
+        -retry_config: RetryConfig
+        -on_retry: Option~Callback~
+    }
+
+    class HeroSmsProvider {
+        -client: HeroSms
+        -blacklisted_dial_codes: HashSet
+        -options: Option~GetNumberOptions~
+    }
+
+    class SmsOnlineProvider {
+        -client: SmsOnline
+        -blacklisted_dial_codes: HashSet
+        -options: Option~GetNumberOptions~
+    }
+
+    class SmsSolverServiceConfig {
+        +timeout: Duration
+        +poll_interval: Duration
+        +fast() Self
+        +balanced() Self
+        +patient() Self
+        +validate() Result
+    }
+
+    class RetryableError {
+        <<trait>>
+        +is_retryable() bool
+        +should_retry_operation() bool
+    }
+
+    SmsSolverService --> Provider : uses P
+    SmsSolverService --> SmsSolverServiceConfig
+    SmsSolverService --> ActivationHandle : creates
+    SmsRetryableProvider ..|> Provider : implements
+    SmsRetryableProvider --> Provider : wraps P
+    SmsRetryableProvider ..|> ProviderCapabilities : conditionally
+    HeroSmsProvider ..|> Provider : implements
+    HeroSmsProvider ..|> ProviderCapabilities : implements
+    SmsOnlineProvider ..|> Provider : implements
+    SmsOnlineProvider ..|> ProviderCapabilities : implements
+    Provider --> RetryableError : Error must impl
+```
+
+## Activation Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Service as SmsSolverService
+    participant Handle as ActivationHandle
+    participant Retry as SmsRetryableProvider
+    participant Provider as HeroSms/SmsOnline
+
+    User->>Service: activate(country, service)
+    Service->>Retry: get_phone_number(country, service)
+    loop Retry on transient errors
+        Retry->>Provider: HTTP GET /getNumber
+        Provider-->>Retry: Response
+    end
+    Retry-->>Service: (TaskId, FullNumber, DialCode)
+    Service-->>User: ActivationHandle
+
+    User->>Handle: wait_for_code()
+    loop Poll until timeout
+        Handle->>Service: get_sms_code(task_id)
+        Service->>Retry: get_sms_code(task_id)
+        Retry->>Provider: HTTP GET /getStatus
+        Provider-->>Retry: Response
+        alt SMS received
+            Retry-->>Service: Ok(Some(code))
+            Service-->>Handle: SmsCode
+            Handle-->>User: Ok(SmsCode)
+        else Still waiting
+            Retry-->>Service: Ok(None)
+            Note over Service: sleep(poll_interval)
+        else Timeout reached
+            Service->>Provider: cancel_activation(task_id)
+            Service-->>Handle: Err(SmsTimeout)
+            Handle-->>User: Err(SmsTimeout)
+        end
+    end
+
+    User->>Handle: finish()
+    Handle->>Provider: finish_activation(task_id)
+    Provider-->>Handle: Ok
+    Handle-->>User: Ok
+```
+
+## Error Classification
+
+```mermaid
+flowchart TD
+    Error([Provider Error]) --> Retryable{is_retryable?}
+
+    Retryable -->|Yes| RetryExamples["NO_NUMBERS
+    ERROR_SQL
+    CHANNELS_LIMIT
+    HTTP timeout"]
+    RetryExamples --> SameTask[Retry same task<br/>with backoff]
+
+    Retryable -->|No| RetryOp{should_retry_operation?}
+
+    RetryOp -->|Yes| RetryOpExamples["NO_ACTIVATION
+    WRONG_ACTIVATION_ID
+    SmsTimeout"]
+    RetryOpExamples --> FreshTask[Cancel current,<br/>start fresh activation]
+
+    RetryOp -->|No| Permanent["BAD_KEY
+    BAD_SERVICE
+    NO_BALANCE
+    BANNED
+    Parse errors"]
+    Permanent --> Fail[Return error to caller]
 ```
 
 ## Error Ownership
