@@ -1,6 +1,7 @@
-//! Main service implementation.
+//! Core SmsSolverService implementation.
 
-use super::config::{SmsSolverServiceConfig, SmsSolverServiceConfigBuilder};
+use super::builder::SmsSolverServiceBuilder;
+use super::config::SmsSolverServiceConfig;
 use super::error::SmsSolverServiceError;
 use super::traits::SmsSolverServiceTrait;
 use crate::errors::RetryableError;
@@ -16,73 +17,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "metrics")]
-use opentelemetry::{
-    KeyValue, global,
-    metrics::{Counter, Histogram},
-};
+use super::telemetry::ServiceMetrics;
+#[cfg(feature = "metrics")]
+use opentelemetry::KeyValue;
 
 use crate::DialCode;
-#[cfg(feature = "metrics")]
-use std::sync::OnceLock;
-
-/// Metrics for the SMS Solver service.
-#[cfg(feature = "metrics")]
-struct ServiceMetrics {
-    /// Counter for number requests.
-    numbers_requested: Counter<u64>,
-    /// Counter for successful SMS codes received.
-    sms_codes_received: Counter<u64>,
-    /// Counter for timeouts.
-    timeouts: Counter<u64>,
-    /// Counter for cancellations.
-    cancellations: Counter<u64>,
-    /// Counter for errors.
-    errors: Counter<u64>,
-    /// Histogram for SMS wait times in seconds.
-    sms_wait_time: Histogram<f64>,
-    /// Histogram for poll counts.
-    poll_counts: Histogram<u64>,
-}
-
-#[cfg(feature = "metrics")]
-impl ServiceMetrics {
-    fn global() -> &'static Self {
-        static METRICS: OnceLock<ServiceMetrics> = OnceLock::new();
-        METRICS.get_or_init(|| {
-            let meter = global::meter("sms_solvers");
-            Self {
-                numbers_requested: meter
-                    .u64_counter("sms_solvers.numbers_requested")
-                    .with_description("Number of phone number requests")
-                    .build(),
-                sms_codes_received: meter
-                    .u64_counter("sms_solvers.sms_codes_received")
-                    .with_description("Number of SMS codes successfully received")
-                    .build(),
-                timeouts: meter
-                    .u64_counter("sms_solvers.timeouts")
-                    .with_description("Number of SMS wait timeouts")
-                    .build(),
-                cancellations: meter
-                    .u64_counter("sms_solvers.cancellations")
-                    .with_description("Number of cancelled operations")
-                    .build(),
-                errors: meter
-                    .u64_counter("sms_solvers.errors")
-                    .with_description("Number of errors")
-                    .build(),
-                sms_wait_time: meter
-                    .f64_histogram("sms_solvers.sms_wait_time_seconds")
-                    .with_description("Time spent waiting for SMS codes")
-                    .build(),
-                poll_counts: meter
-                    .u64_histogram("sms_solvers.poll_counts")
-                    .with_description("Number of polls before receiving SMS")
-                    .build(),
-            }
-        })
-    }
-}
 
 /// Generic SMS service that works with any Provider implementation.
 ///
@@ -95,33 +34,25 @@ impl ServiceMetrics {
 ///
 /// # Type Parameters
 ///
-/// - `P`: The provider implementation (e.g., `SmsActivateProvider`)
+/// - `P`: The provider implementation (e.g., `HeroSmsProvider`)
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use sms_solvers::{SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait, Alpha2};
-/// use sms_solvers::hero_sms::{SmsActivateClient, SmsActivateProvider, Service};
-/// use std::time::Duration;
+/// use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
 ///
-/// // Create provider and service
-/// let client = SmsActivateClient::with_api_key("api_key")?;
-/// let provider = SmsActivateProvider::new(client);
-/// let config = SmsSolverServiceConfig::default();
-/// let service = SmsSolverService::new(provider, config);
+/// let client = HeroSms::with_api_key("api_key")?;
+/// let provider = HeroSmsProvider::new(client);
+/// let service = SmsSolverService::try_new(provider, SmsSolverServiceConfig::default())?;
 ///
-/// // Get a phone number for WhatsApp
 /// let result = service.get_number(Alpha2::US.to_country(), Service::Whatsapp).await?;
-/// println!("Got number: {} (task_id: {})", result.full_number, result.task_id);
-///
-/// // Wait for SMS code
 /// let code = service.wait_for_sms_code(&result.task_id).await?;
-/// println!("Got code: {}", code);
 /// ```
 #[derive(Debug, Clone)]
 pub struct SmsSolverService<P: Provider> {
-    provider: P,
-    config: SmsSolverServiceConfig,
+    pub(crate) provider: P,
+    pub(crate) config: SmsSolverServiceConfig,
 }
 
 impl<P: Provider> SmsSolverService<P>
@@ -148,11 +79,9 @@ where
 
     /// Create a new SMS service with a custom provider and configuration.
     ///
-    /// # Note
-    ///
     /// This does not validate the configuration. Use [`try_new`](Self::try_new)
     /// for validated construction or [`new_unchecked`](Self::new_unchecked)
-    /// if you need to skip validation explicitly.
+    /// to skip validation explicitly.
     #[deprecated(
         note = "Use `try_new` for validated construction or `new_unchecked` to skip validation"
     )]
@@ -199,23 +128,6 @@ where
     }
 
     /// Filter dial codes to only include those supported by the provider.
-    ///
-    /// This method filters out blacklisted dial codes using the provider's
-    /// `is_dial_code_supported` method.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use sms_solvers::{SmsSolverService, DialCode};
-    ///
-    /// let dial_codes = vec![
-    ///     DialCode::new("1").unwrap(),
-    ///     DialCode::new("44").unwrap(),
-    ///     DialCode::new("380").unwrap(),
-    /// ];
-    ///
-    /// let supported = service.filter_supported_dial_codes(dial_codes);
-    /// ```
     pub fn filter_supported_dial_codes(&self, dial_codes: Vec<DialCode>) -> Vec<DialCode> {
         dial_codes
             .into_iter()
@@ -225,27 +137,8 @@ where
 
     /// Select a random dial code from the provided list, filtering out unsupported ones.
     ///
-    /// This method first filters the dial codes using `is_dial_code_supported`,
-    /// then selects one at random from the remaining options.
-    ///
-    /// # Errors
-    ///
     /// Returns `SmsSolverServiceError::NoAvailableDialCodes` if no supported
     /// dial codes remain after filtering.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use sms_solvers::{SmsSolverService, DialCode};
-    ///
-    /// let dial_codes = vec![
-    ///     DialCode::new("1").unwrap(),
-    ///     DialCode::new("44").unwrap(),
-    ///     DialCode::new("380").unwrap(),
-    /// ];
-    ///
-    /// let selected = service.select_random_dial_code(dial_codes)?;
-    /// ```
     #[cfg(feature = "random")]
     pub fn select_random_dial_code(
         &self,
@@ -562,88 +455,6 @@ where
 
             tokio::time::sleep(poll_interval).await;
         }
-    }
-}
-
-/// Builder for SmsSolverService.
-///
-/// Provides a fluent API for constructing an SMS service with a provider
-/// and custom configuration.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use sms_solvers::{SmsSolverService, Provider};
-/// use std::time::Duration;
-///
-/// let service = SmsSolverService::builder(provider)
-///     .timeout(Duration::from_secs(180))
-///     .poll_interval(Duration::from_secs(5))
-///     .build();
-/// ```
-#[derive(Debug, Clone)]
-pub struct SmsSolverServiceBuilder<P: Provider> {
-    provider: P,
-    config_builder: SmsSolverServiceConfigBuilder,
-}
-
-impl<P: Provider> SmsSolverServiceBuilder<P>
-where
-    P::Error: Debug + Display + RetryableError,
-{
-    /// Create a new builder with the given provider.
-    pub fn new(provider: P) -> Self {
-        Self {
-            provider,
-            config_builder: SmsSolverServiceConfigBuilder::default(),
-        }
-    }
-
-    /// Set the timeout for waiting for SMS codes.
-    ///
-    /// Default: 120 seconds
-    pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
-        self.config_builder = self.config_builder.timeout(timeout);
-        self
-    }
-
-    /// Set the polling interval when waiting for SMS codes.
-    ///
-    /// Default: 3 seconds
-    pub fn poll_interval(mut self, interval: std::time::Duration) -> Self {
-        self.config_builder = self.config_builder.poll_interval(interval);
-        self
-    }
-
-    /// Set the full configuration.
-    pub fn config(mut self, config: SmsSolverServiceConfig) -> Self {
-        self.config_builder = SmsSolverServiceConfigBuilder {
-            timeout: config.timeout,
-            poll_interval: config.poll_interval,
-        };
-        self
-    }
-
-    /// Build and validate the SmsSolverService.
-    ///
-    /// Returns an error if the configuration is invalid.
-    pub fn try_build(self) -> Result<SmsSolverService<P>, super::config::ConfigError> {
-        let config = self.config_builder.try_build()?;
-        Ok(SmsSolverService {
-            provider: self.provider,
-            config,
-        })
-    }
-
-    /// Build the SmsSolverService without validation.
-    ///
-    /// # Note
-    ///
-    /// Prefer [`try_build`](Self::try_build) for validated construction.
-    #[deprecated(note = "Use `try_build` for validated construction")]
-    pub fn build(self) -> SmsSolverService<P> {
-        #[allow(deprecated)]
-        SmsSolverService::new(self.provider, self.config_builder.build())
     }
 }
 
