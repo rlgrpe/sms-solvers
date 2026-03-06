@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_timeout(Duration::from_secs(180))
         .with_poll_interval(Duration::from_secs(5));
 
-    let service = SmsSolverService::new(retryable_provider, config);
+    let service = SmsSolverService::try_new(retryable_provider, config)?;
 
     // Request a phone number for UK (WhatsApp verification)
     println!("Requesting phone number for UK (WhatsApp, with retry enabled)...");

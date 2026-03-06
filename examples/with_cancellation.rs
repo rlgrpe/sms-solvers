@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use the patient preset for longer timeout
     let config = SmsSolverServiceConfig::patient();
-    let service = SmsSolverService::new(retryable, config);
+    let service = SmsSolverService::try_new(retryable, config)?;
 
     // Request a phone number
     println!("Requesting phone number...");

@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create service with fast preset for testing
     let config = SmsSolverServiceConfig::fast();
-    let service = SmsSolverService::new(retryable_provider, config);
+    let service = SmsSolverService::try_new(retryable_provider, config)?;
 
     // Request a phone number
     println!("Requesting phone number (retries will be logged)...\n");

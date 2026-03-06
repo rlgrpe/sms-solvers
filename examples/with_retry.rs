@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_poll_interval(Duration::from_secs(5));
 
     // Create the service with retry-enabled provider
-    let service = SmsSolverService::new(retryable_provider, config);
+    let service = SmsSolverService::try_new(retryable_provider, config)?;
 
     // Request a phone number for USA (WhatsApp verification)
     println!("Requesting phone number for USA (WhatsApp, with retry enabled)...");

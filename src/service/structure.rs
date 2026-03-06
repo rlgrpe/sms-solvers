@@ -128,14 +128,44 @@ impl<P: Provider> SmsSolverService<P>
 where
     P::Error: Debug + Display + RetryableError,
 {
+    /// Create a new SMS service with a validated configuration.
+    ///
+    /// Returns an error if the configuration is invalid.
+    pub fn try_new(
+        provider: P,
+        config: SmsSolverServiceConfig,
+    ) -> Result<Self, super::config::ConfigError> {
+        config.validate()?;
+        Ok(Self { provider, config })
+    }
+
+    /// Create a new SMS service without configuration validation.
+    ///
+    /// Prefer [`try_new`](Self::try_new) for validated construction.
+    pub fn new_unchecked(provider: P, config: SmsSolverServiceConfig) -> Self {
+        Self { provider, config }
+    }
+
     /// Create a new SMS service with a custom provider and configuration.
+    ///
+    /// # Note
+    ///
+    /// This does not validate the configuration. Use [`try_new`](Self::try_new)
+    /// for validated construction or [`new_unchecked`](Self::new_unchecked)
+    /// if you need to skip validation explicitly.
+    #[deprecated(
+        note = "Use `try_new` for validated construction or `new_unchecked` to skip validation"
+    )]
     pub fn new(provider: P, config: SmsSolverServiceConfig) -> Self {
         Self { provider, config }
     }
 
     /// Create a new SMS service with default configuration.
     pub fn with_provider(provider: P) -> Self {
-        Self::new(provider, SmsSolverServiceConfig::default())
+        Self {
+            provider,
+            config: SmsSolverServiceConfig::default(),
+        }
     }
 
     /// Create a new builder for SmsSolverService.
@@ -594,8 +624,25 @@ where
         self
     }
 
-    /// Build the SmsSolverService.
+    /// Build and validate the SmsSolverService.
+    ///
+    /// Returns an error if the configuration is invalid.
+    pub fn try_build(self) -> Result<SmsSolverService<P>, super::config::ConfigError> {
+        let config = self.config_builder.try_build()?;
+        Ok(SmsSolverService {
+            provider: self.provider,
+            config,
+        })
+    }
+
+    /// Build the SmsSolverService without validation.
+    ///
+    /// # Note
+    ///
+    /// Prefer [`try_build`](Self::try_build) for validated construction.
+    #[deprecated(note = "Use `try_build` for validated construction")]
     pub fn build(self) -> SmsSolverService<P> {
+        #[allow(deprecated)]
         SmsSolverService::new(self.provider, self.config_builder.build())
     }
 }
@@ -721,7 +768,7 @@ mod tests {
             .poll_interval(Duration::from_millis(10))
             .build();
 
-        let service = SmsSolverService::new(provider.clone(), config);
+        let service = SmsSolverService::new_unchecked(provider.clone(), config);
 
         let result = service
             .get_number(Alpha2::UA.to_country(), MockService)
@@ -748,7 +795,7 @@ mod tests {
             .poll_interval(Duration::from_millis(10))
             .build();
 
-        let service = SmsSolverService::new(provider, config);
+        let service = SmsSolverService::new_unchecked(provider, config);
 
         let result = service
             .get_number(Alpha2::UA.to_country(), MockService)
@@ -786,7 +833,7 @@ mod tests {
             .poll_interval(Duration::from_millis(10))
             .build();
 
-        let service = SmsSolverService::new(provider, config);
+        let service = SmsSolverService::new_unchecked(provider, config);
 
         let result = service
             .get_number(Alpha2::UA.to_country(), MockService)
@@ -828,7 +875,7 @@ mod tests {
             .poll_interval(Duration::from_millis(10))
             .build();
 
-        let service = SmsSolverService::new(provider, config);
+        let service = SmsSolverService::new_unchecked(provider, config);
 
         let result = service
             .get_number(Alpha2::UA.to_country(), MockService)
@@ -850,13 +897,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_service_builder() {
+    async fn test_service_builder_try_build() {
         let provider = MockProvider::new().with_number("task123", "380501234567");
 
         let service = SmsSolverService::builder(provider)
             .timeout(Duration::from_secs(90))
             .poll_interval(Duration::from_secs(5))
-            .build();
+            .try_build()
+            .unwrap();
 
         assert_eq!(service.config().timeout, Duration::from_secs(90));
         assert_eq!(service.config().poll_interval, Duration::from_secs(5));
@@ -866,16 +914,37 @@ mod tests {
     async fn test_service_with_config_presets() {
         let provider = MockProvider::new();
 
-        let fast_service = SmsSolverService::new(provider.clone(), SmsSolverServiceConfig::fast());
+        let fast_service =
+            SmsSolverService::try_new(provider.clone(), SmsSolverServiceConfig::fast()).unwrap();
         assert_eq!(fast_service.config().timeout, Duration::from_secs(60));
         assert_eq!(fast_service.config().poll_interval, Duration::from_secs(1));
 
         let patient_service =
-            SmsSolverService::new(provider.clone(), SmsSolverServiceConfig::patient());
+            SmsSolverService::try_new(provider.clone(), SmsSolverServiceConfig::patient()).unwrap();
         assert_eq!(patient_service.config().timeout, Duration::from_secs(300));
         assert_eq!(
             patient_service.config().poll_interval,
             Duration::from_secs(5)
         );
+    }
+
+    #[test]
+    fn test_try_new_validates_config() {
+        let provider = MockProvider::new();
+        let bad_config = SmsSolverServiceConfig {
+            timeout: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(1),
+        };
+        assert!(SmsSolverService::try_new(provider, bad_config).is_err());
+    }
+
+    #[test]
+    fn test_try_build_validates_config() {
+        let provider = MockProvider::new();
+        let result = SmsSolverService::builder(provider)
+            .timeout(Duration::from_secs(1))
+            .poll_interval(Duration::from_secs(5))
+            .try_build();
+        assert!(result.is_err());
     }
 }
