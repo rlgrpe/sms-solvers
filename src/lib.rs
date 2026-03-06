@@ -11,40 +11,40 @@
 //! | Provider | Feature | Website |
 //! |----------|---------|---------|
 //! | Hero SMS | `hero-sms` (default) | <https://hero-sms.com> |
+//! | SMS.online | `sms-online` (default) | <https://sms.online> |
 //!
 //! ## Quick Start
 //!
 //! ```rust,ignore
 //! use sms_solvers::{
-//!     SmsSolverService, SmsSolverServiceConfig, SmsSolverServiceTrait,
-//!     hero_sms::{HeroSmsProvider, Service},
-//!     SmsRetryableProvider, RetryConfig,
+//!     SmsSolverService, SmsSolverServiceTrait, Alpha2,
+//!     hero_sms::{HeroSms, HeroSmsProvider, Service},
+//!     SmsRetryableProvider,
 //! };
-//! use std::time::Duration;
-//! use isocountry::CountryCode;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create provider with API key
-//!     let provider = HeroSmsProvider::new("your_api_key")?;
+//!     // Create client and provider
+//!     let client = HeroSms::with_api_key("your_api_key")?;
+//!     let provider = HeroSmsProvider::new(client);
 //!
 //!     // Wrap with retry logic
 //!     let retryable = SmsRetryableProvider::new(provider);
 //!
-//!     // Create service
+//!     // Create service with validated config
 //!     let service = SmsSolverService::builder(retryable)
-//!         .timeout(Duration::from_secs(120))
-//!         .poll_interval(Duration::from_secs(3))
-//!         .build();
+//!         .timeout(std::time::Duration::from_secs(120))
+//!         .poll_interval(std::time::Duration::from_secs(3))
+//!         .try_build()?;
 //!
-//!     // Get a phone number
-//!     let result = service.get_number(CountryCode::USA, Service::Whatsapp).await?;
-//!     println!("Got number: {}", result.full_number);
+//!     // Get a phone number and wait for SMS (using ActivationHandle)
+//!     let activation = service.activate(Alpha2::US.to_country(), Service::Whatsapp).await?;
+//!     println!("Got number: {}", activation.full_number());
 //!
-//!     // Wait for SMS code
-//!     let code = service.wait_for_sms_code(&result.task_id).await?;
+//!     let code = activation.wait_for_code().await?;
 //!     println!("Got code: {}", code);
 //!
+//!     activation.finish().await?;
 //!     Ok(())
 //! }
 //! ```
@@ -64,7 +64,9 @@
 //! ## Features
 //!
 //! - `hero-sms` - Hero SMS provider support (enabled by default)
+//! - `sms-online` - SMS.online provider support (enabled by default)
 //! - `tracing` - OpenTelemetry tracing instrumentation (enabled by default)
+//! - `metrics` - OpenTelemetry metrics (counters, histograms)
 
 mod errors;
 mod providers;
@@ -109,16 +111,16 @@ pub use types::DialCodeToCountryError;
 /// # Example
 ///
 /// ```rust,ignore
-/// use sms_solvers::hero_sms::{HeroSmsProvider, HeroSms, Service};
-/// use sms_solvers::{SmsSolverService, SmsSolverServiceTrait, SmsRetryableProvider};
-/// use isocountry::CountryCode;
+/// use sms_solvers::hero_sms::{HeroSms, HeroSmsProvider, Service};
+/// use sms_solvers::{SmsSolverService, SmsRetryableProvider, Alpha2};
 ///
 /// let client = HeroSms::with_api_key("your_api_key")?;
 /// let provider = HeroSmsProvider::new(client);
 /// let service = SmsSolverService::with_provider(SmsRetryableProvider::new(provider));
 ///
-/// let result = service.get_number(CountryCode::TUR, Service::Whatsapp).await?;
-/// let code = service.wait_for_sms_code(&result.task_id).await?;
+/// let activation = service.activate(Alpha2::TR.to_country(), Service::Whatsapp).await?;
+/// let code = activation.wait_for_code().await?;
+/// activation.finish().await?;
 /// ```
 #[cfg(feature = "hero-sms")]
 pub mod hero_sms {
