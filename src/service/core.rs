@@ -1,5 +1,6 @@
 //! Core SmsSolverService implementation.
 
+use super::activation::ActivationHandle;
 use super::builder::SmsSolverServiceBuilder;
 use super::config::SmsSolverServiceConfig;
 use super::error::SmsSolverServiceError;
@@ -156,6 +157,28 @@ where
             .choose(&mut rand::thread_rng())
             .cloned()
             .ok_or(SmsSolverServiceError::NoAvailableDialCodes)
+    }
+
+    /// Acquire a phone number and return an [`ActivationHandle`] for managing the lifecycle.
+    ///
+    /// This is the preferred entry point for new code. The handle bundles
+    /// the activation data with convenience methods for waiting, finishing,
+    /// and cancelling.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let activation = service.activate(country, Service::Whatsapp).await?;
+    /// let code = activation.wait_for_code().await?;
+    /// activation.finish().await?;
+    /// ```
+    pub async fn activate(
+        &self,
+        country: Country,
+        service: P::Service,
+    ) -> Result<ActivationHandle<P>, SmsSolverServiceError> {
+        let result = self.get_number(country, service).await?;
+        Ok(ActivationHandle::new(self.clone(), result))
     }
 }
 

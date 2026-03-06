@@ -80,8 +80,9 @@ pub use providers::{Provider, ProviderCapabilities, SmsRetryableProvider};
 
 // Re-export service types
 pub use service::{
-    ConfigError, SmsSolverService, SmsSolverServiceBuilder, SmsSolverServiceConfig,
-    SmsSolverServiceConfigBuilder, SmsSolverServiceError, SmsSolverServiceTrait,
+    ActivationHandle, ConfigError, SmsSolverService, SmsSolverServiceBuilder,
+    SmsSolverServiceConfig, SmsSolverServiceConfigBuilder, SmsSolverServiceError,
+    SmsSolverServiceTrait,
 };
 
 // Re-export CancellationToken for cancellable operations
