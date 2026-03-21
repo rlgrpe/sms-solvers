@@ -138,7 +138,8 @@ impl SmsOnline {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnline::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.online.client",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -202,7 +203,8 @@ impl SmsOnline {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnline::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.online.client",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -231,7 +233,8 @@ impl SmsOnline {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnline::set_activation_status",
+            name = "set_activation_status",
+            target = "sms.online.client",
             skip_all,
             fields(task_id = %task_id, status = %status)
         )

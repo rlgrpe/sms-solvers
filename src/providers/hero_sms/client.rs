@@ -191,7 +191,8 @@ impl HeroSms {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSms::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.hero.client",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -254,7 +255,8 @@ impl HeroSms {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSms::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.hero.client",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -285,7 +287,8 @@ impl HeroSms {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSms::set_activation_status",
+            name = "set_activation_status",
+            target = "sms.hero.client",
             skip_all,
             fields(task_id = %task_id, status = %status)
         )

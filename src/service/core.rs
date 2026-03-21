@@ -194,7 +194,8 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsSolverService::get_number",
+            name = "get_number",
+            target = "sms.service",
             skip_all,
             fields(country = %country.iso_short_name())
         )
@@ -289,7 +290,8 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsSolverService::wait_for_sms_code",
+            name = "wait_for_sms_code",
+            target = "sms.service",
             skip_all,
             fields(task_id = %task_id)
         )
@@ -302,7 +304,8 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsSolverService::wait_for_sms_code_cancellable",
+            name = "wait_for_sms_code_cancellable",
+            target = "sms.service",
             skip_all,
             fields(task_id = %task_id)
         )

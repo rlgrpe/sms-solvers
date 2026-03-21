@@ -146,7 +146,8 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsRetryableProvider::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.provider",
             skip_all,
             fields(country = %country.iso_short_name())
         )
@@ -187,7 +188,8 @@ where
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsRetryableProvider::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.provider",
             skip_all,
             fields(task_id = %task_id)
         )

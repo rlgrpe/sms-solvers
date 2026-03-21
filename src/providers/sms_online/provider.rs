@@ -83,7 +83,8 @@ impl Provider for SmsOnlineProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnlineProvider::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.online",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -120,7 +121,8 @@ impl Provider for SmsOnlineProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnlineProvider::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.online",
             skip_all,
             fields(task_id = %task_id)
         )
