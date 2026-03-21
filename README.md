@@ -43,7 +43,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.3.1" }
+sms-solvers = { git = "https://github.com/rlgrpe/sms-solvers.git", tag = "v0.5.0" }
 tokio = { version = "1", features = ["full"] }
 ```
 
