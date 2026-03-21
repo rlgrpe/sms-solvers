@@ -15,7 +15,11 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tracing")]
-use tracing::{debug, error, info, warn};
+use crate::utils::error_chain::ErrorChain;
+#[cfg(feature = "tracing")]
+use crate::utils::span_status::{set_span_error, set_span_ok};
+#[cfg(feature = "tracing")]
+use tracing::{error, info, warn};
 
 #[cfg(feature = "metrics")]
 use super::telemetry::ServiceMetrics;
@@ -197,7 +201,7 @@ where
             name = "get_number",
             target = "sms.service",
             skip_all,
-            fields(country = %country.iso_short_name())
+            fields(country = %country.iso_short_name(), outcome = tracing::field::Empty)
         )
     )]
     async fn get_number(
@@ -205,9 +209,6 @@ where
         country: Country,
         service: Self::Service,
     ) -> Result<SmsTaskResult, Self::Error> {
-        #[cfg(feature = "tracing")]
-        debug!("Requesting phone number");
-
         #[cfg(feature = "metrics")]
         let country_alpha2 = country.alpha2().to_string();
 
@@ -236,11 +237,17 @@ where
                     is_retryable,
                     should_retry_operation,
                 }
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::Span::current().record("outcome", "error");
+                    set_span_error(e);
+                }
             })?;
 
         let dial_code = api_dial_code.unwrap_or_else(|| DialCode::from(&country));
 
-        // Check if the dial code is blacklisted
         if !self.provider.is_dial_code_supported(&dial_code) {
             #[cfg(feature = "tracing")]
             warn!(
@@ -249,18 +256,29 @@ where
                 "Dial code is blacklisted, cancelling activation"
             );
 
-            // Cancel the activation since we won't use this number
             if let Err(e) = self.provider.cancel_activation(&task_id).await {
                 #[cfg(feature = "tracing")]
-                warn!(error = %e, "Failed to cancel activation for blacklisted number");
+                warn!(error = %ErrorChain(&e), "Failed to cancel activation for blacklisted number");
 
-                return Err(SmsSolverServiceError::CancelFailed {
+                let err = SmsSolverServiceError::CancelFailed {
                     task_id,
                     message: e.to_string(),
-                });
+                };
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::Span::current().record("outcome", "error");
+                    set_span_error(&err);
+                }
+                return Err(err);
             }
 
-            return Err(SmsSolverServiceError::DialCodeBlacklisted { dial_code, task_id });
+            let err = SmsSolverServiceError::DialCodeBlacklisted { dial_code, task_id };
+            #[cfg(feature = "tracing")]
+            {
+                tracing::Span::current().record("outcome", "error");
+                set_span_error(&err);
+            }
+            return Err(err);
         }
 
         let number = Number::from_full_number(&full_number, &dial_code).map_err(|e| {
@@ -268,15 +286,26 @@ where
                 full_number: full_number.to_string(),
                 message: e.to_string(),
             }
+        });
+        let number = number.inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            {
+                tracing::Span::current().record("outcome", "error");
+                set_span_error(e);
+            }
         })?;
 
         #[cfg(feature = "tracing")]
-        info!(
-            task_id = %task_id,
-            dial_code = %dial_code,
-            country = %country.iso_short_name(),
-            "Phone number acquired"
-        );
+        {
+            tracing::Span::current().record("outcome", "success");
+            set_span_ok();
+            info!(
+                task_id = %task_id,
+                dial_code = %dial_code,
+                country = %country.iso_short_name(),
+                "Phone number acquired"
+            );
+        }
 
         Ok(SmsTaskResult {
             task_id,
@@ -307,7 +336,7 @@ where
             name = "wait_for_sms_code_cancellable",
             target = "sms.service",
             skip_all,
-            fields(task_id = %task_id)
+            fields(task_id = %task_id, outcome = tracing::field::Empty)
         )
     )]
     async fn wait_for_sms_code_cancellable(
@@ -319,9 +348,6 @@ where
         let poll_interval = self.config.poll_interval;
         let start = Instant::now();
         let mut poll_count: u32 = 0;
-
-        #[cfg(feature = "tracing")]
-        debug!(timeout_secs = %timeout.as_secs_f64(), "Starting SMS code polling");
 
         loop {
             // Check for cancellation
@@ -347,22 +373,33 @@ where
                         .record(poll_count as u64, &[KeyValue::new("outcome", "cancelled")]);
                 }
 
-                // Try to cancel the activation
                 if let Err(e) = self.provider.cancel_activation(task_id).await {
                     #[cfg(feature = "tracing")]
-                    warn!(error = %e, "Failed to cancel activation after cancellation request");
+                    warn!(error = %ErrorChain(&e), "Failed to cancel activation after cancellation request");
 
-                    return Err(SmsSolverServiceError::CancelFailed {
+                    let err = SmsSolverServiceError::CancelFailed {
                         task_id: task_id.clone(),
                         message: e.to_string(),
-                    });
+                    };
+                    #[cfg(feature = "tracing")]
+                    {
+                        tracing::Span::current().record("outcome", "error");
+                        set_span_error(&err);
+                    }
+                    return Err(err);
                 }
 
-                return Err(SmsSolverServiceError::Cancelled {
+                let err = SmsSolverServiceError::Cancelled {
                     elapsed,
                     poll_count,
                     task_id: task_id.clone(),
-                });
+                };
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::Span::current().record("outcome", "cancelled");
+                    set_span_error(&err);
+                }
+                return Err(err);
             }
 
             // Check for timeout
@@ -388,23 +425,34 @@ where
                         .record(poll_count as u64, &[KeyValue::new("outcome", "timeout")]);
                 }
 
-                // Try to cancel the activation
                 if let Err(e) = self.provider.cancel_activation(task_id).await {
                     #[cfg(feature = "tracing")]
-                    warn!(error = %e, "Failed to cancel activation after timeout");
+                    warn!(error = %ErrorChain(&e), "Failed to cancel activation after timeout");
 
-                    return Err(SmsSolverServiceError::CancelFailed {
+                    let err = SmsSolverServiceError::CancelFailed {
                         task_id: task_id.clone(),
                         message: e.to_string(),
-                    });
+                    };
+                    #[cfg(feature = "tracing")]
+                    {
+                        tracing::Span::current().record("outcome", "error");
+                        set_span_error(&err);
+                    }
+                    return Err(err);
                 }
 
-                return Err(SmsSolverServiceError::SmsTimeout {
+                let err = SmsSolverServiceError::SmsTimeout {
                     timeout,
                     elapsed,
                     poll_count,
                     task_id: task_id.clone(),
-                });
+                };
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::Span::current().record("outcome", "timeout");
+                    set_span_error(&err);
+                }
+                return Err(err);
             }
 
             poll_count += 1;
@@ -414,12 +462,16 @@ where
                     let elapsed = start.elapsed();
 
                     #[cfg(feature = "tracing")]
-                    info!(
-                        code_len = code.as_str().len(),
-                        elapsed_secs = %elapsed.as_secs_f64(),
-                        poll_count = %poll_count,
-                        "SMS code received"
-                    );
+                    {
+                        tracing::Span::current().record("outcome", "success");
+                        set_span_ok();
+                        info!(
+                            code_len = code.as_str().len(),
+                            elapsed_secs = %elapsed.as_secs_f64(),
+                            poll_count = %poll_count,
+                            "SMS code received"
+                        );
+                    }
 
                     #[cfg(feature = "metrics")]
                     {
@@ -444,7 +496,7 @@ where
 
                     #[cfg(feature = "tracing")]
                     error!(
-                        error = %e,
+                        error = %ErrorChain(&e),
                         elapsed_secs = %elapsed.as_secs_f64(),
                         poll_count = %poll_count,
                         "Permanent error during polling"
@@ -463,28 +515,39 @@ where
                             .record(poll_count as u64, &[KeyValue::new("outcome", "error")]);
                     }
 
-                    // Try to cancel the activation
                     if let Err(cancel_err) = self.provider.cancel_activation(task_id).await {
                         #[cfg(feature = "tracing")]
-                        warn!(error = %cancel_err, "Failed to cancel activation after error");
+                        warn!(error = %ErrorChain(&cancel_err), "Failed to cancel activation after error");
 
-                        return Err(SmsSolverServiceError::CancelFailed {
+                        let err = SmsSolverServiceError::CancelFailed {
                             task_id: task_id.clone(),
                             message: format!(
                                 "original error: {e}; cancel also failed: {cancel_err}"
                             ),
-                        });
+                        };
+                        #[cfg(feature = "tracing")]
+                        {
+                            tracing::Span::current().record("outcome", "error");
+                            set_span_error(&err);
+                        }
+                        return Err(err);
                     }
 
-                    return Err(SmsSolverServiceError::Provider {
+                    let err = SmsSolverServiceError::Provider {
                         source: Box::new(e) as Box<dyn StdError + Send + Sync>,
                         is_retryable: false,
                         should_retry_operation,
-                    });
+                    };
+                    #[cfg(feature = "tracing")]
+                    {
+                        tracing::Span::current().record("outcome", "error");
+                        set_span_error(&err);
+                    }
+                    return Err(err);
                 }
                 Err(_e) => {
                     #[cfg(feature = "tracing")]
-                    warn!(error = %_e, poll_count = %poll_count, "Transient error during polling, continuing");
+                    warn!(error = %ErrorChain(&_e), poll_count = %poll_count, "Transient error during polling, continuing");
                 }
             }
 

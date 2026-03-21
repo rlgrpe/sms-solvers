@@ -15,7 +15,7 @@ use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
 #[cfg(feature = "tracing")]
-use opentelemetry::trace::Status;
+use crate::utils::span_status::{set_span_error, set_span_ok};
 #[cfg(feature = "tracing")]
 use tracing::Span;
 #[cfg(feature = "tracing")]
@@ -36,7 +36,7 @@ impl std::fmt::Debug for SmsOnline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SmsOnlineClient")
             .field("endpoint", &self.endpoint)
-            .field("api_key", &"[REDACTED]")
+            .field("api_key", &crate::utils::REDACTED)
             .finish()
     }
 }
@@ -141,10 +141,40 @@ impl SmsOnline {
             name = "get_phone_number",
             target = "sms.online.client",
             skip_all,
-            fields(service = %service.code(), country = %country.iso_short_name())
+            fields(
+                service = %service.code(),
+                country = %country.iso_short_name(),
+                task_id = tracing::field::Empty,
+                phone_number = tracing::field::Empty,
+            )
         )
     )]
     pub async fn get_phone_number(
+        &self,
+        country: Country,
+        service: Service,
+        options: Option<&GetNumberOptions>,
+    ) -> Result<GetPhoneNumberResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.get_phone_number_inner(country, service, options).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                Span::current()
+                    .record("task_id", data.task_id.as_ref())
+                    .record("phone_number", crate::utils::REDACTED);
+                set_span_ok();
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn get_phone_number_inner(
         &self,
         country: Country,
         service: Service,
@@ -186,18 +216,8 @@ impl SmsOnline {
             .into_result()
             .map_err(SmsOnlineError::Service)?;
 
-        let data = GetPhoneNumberResponse::from_raw(&raw)
-            .ok_or_else(|| SmsOnlineError::FailedToParseGetNumberResponse { raw: raw.clone() })?;
-
-        #[cfg(feature = "tracing")]
-        {
-            Span::current()
-                .record("task_id", data.task_id.as_ref())
-                .record("phone_number", "[REDACTED]")
-                .set_status(Status::Ok);
-        }
-
-        Ok(data)
+        GetPhoneNumberResponse::from_raw(&raw)
+            .ok_or_else(|| SmsOnlineError::FailedToParseGetNumberResponse { raw: raw.clone() })
     }
 
     #[cfg_attr(
@@ -206,10 +226,33 @@ impl SmsOnline {
             name = "get_sms_code",
             target = "sms.online.client",
             skip_all,
-            fields(task_id = %task_id)
+            fields(
+                task_id = %task_id,
+                sms_code = tracing::field::Empty,
+            )
         )
     )]
     pub async fn get_sms_code(&self, task_id: &TaskId) -> Result<GetSmsStatusResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.get_sms_code_inner(task_id).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                if matches!(data, GetSmsStatusResponse::Ok { .. }) {
+                    Span::current().record("sms_code", crate::utils::REDACTED);
+                    set_span_ok();
+                }
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn get_sms_code_inner(&self, task_id: &TaskId) -> Result<GetSmsStatusResponse> {
         let url = self.build_request_url("getStatus", vec![("id", task_id.to_string())])?;
         let text = self.send_request(url).await?;
 
@@ -217,17 +260,8 @@ impl SmsOnline {
             .into_result()
             .map_err(SmsOnlineError::Service)?;
 
-        let data = GetSmsStatusResponse::from_raw(&raw)
-            .ok_or_else(|| SmsOnlineError::FailedToParseGetStatusResponse { raw: raw.clone() })?;
-
-        #[cfg(feature = "tracing")]
-        if matches!(data, GetSmsStatusResponse::Ok { .. }) {
-            Span::current()
-                .record("sms_code", "[REDACTED]")
-                .set_status(Status::Ok);
-        }
-
-        Ok(data)
+        GetSmsStatusResponse::from_raw(&raw)
+            .ok_or_else(|| SmsOnlineError::FailedToParseGetStatusResponse { raw: raw.clone() })
     }
 
     #[cfg_attr(
@@ -236,10 +270,36 @@ impl SmsOnline {
             name = "set_activation_status",
             target = "sms.online.client",
             skip_all,
-            fields(task_id = %task_id, status = %status)
+            fields(
+                task_id = %task_id,
+                status = %status,
+                response = tracing::field::Empty,
+            )
         )
     )]
     pub async fn set_activation_status(
+        &self,
+        task_id: &TaskId,
+        status: ActivationStatus,
+    ) -> Result<SetStatusResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.set_activation_status_inner(task_id, status).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                Span::current().record("response", data.to_string());
+                set_span_ok();
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn set_activation_status_inner(
         &self,
         task_id: &TaskId,
         status: ActivationStatus,
@@ -257,17 +317,8 @@ impl SmsOnline {
             .into_result()
             .map_err(SmsOnlineError::Service)?;
 
-        let result = SetStatusResponse::from_raw(&raw)
-            .ok_or_else(|| SmsOnlineError::FailedToParseSetStatusResponse { raw: raw.clone() })?;
-
-        #[cfg(feature = "tracing")]
-        {
-            Span::current()
-                .record("response", result.to_string())
-                .set_status(Status::Ok);
-        }
-
-        Ok(result)
+        SetStatusResponse::from_raw(&raw)
+            .ok_or_else(|| SmsOnlineError::FailedToParseSetStatusResponse { raw: raw.clone() })
     }
 }
 

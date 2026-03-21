@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use url::Url;
 
 #[cfg(feature = "tracing")]
-use opentelemetry::trace::Status;
+use crate::utils::span_status::{set_span_error, set_span_ok};
 #[cfg(feature = "tracing")]
 use tracing::Span;
 #[cfg(feature = "tracing")]
@@ -57,7 +57,7 @@ impl std::fmt::Debug for HeroSms {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HeroSmsClient")
             .field("endpoint", &self.endpoint)
-            .field("api_key", &"[REDACTED]")
+            .field("api_key", &crate::utils::REDACTED)
             .finish()
     }
 }
@@ -194,10 +194,40 @@ impl HeroSms {
             name = "get_phone_number",
             target = "sms.hero.client",
             skip_all,
-            fields(service = %service.code(), country = %country.iso_short_name())
+            fields(
+                service = %service.code(),
+                country = %country.iso_short_name(),
+                task_id = tracing::field::Empty,
+                phone_number = tracing::field::Empty,
+            )
         )
     )]
     pub async fn get_phone_number(
+        &self,
+        country: Country,
+        service: Service,
+        options: Option<&GetNumberOptions>,
+    ) -> Result<GetPhoneNumberResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.get_phone_number_inner(country, service, options).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                Span::current()
+                    .record("task_id", data.task_id.as_ref())
+                    .record("phone_number", crate::utils::REDACTED);
+                set_span_ok();
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn get_phone_number_inner(
         &self,
         country: Country,
         service: Service,
@@ -238,17 +268,7 @@ impl HeroSms {
         let response = HeroSmsResponse::<GetPhoneNumberResponse>::from_text(&text)
             .map_err(HeroSmsError::DeserializeJson)?;
 
-        let data = response.into_result().map_err(HeroSmsError::Service)?;
-
-        #[cfg(feature = "tracing")]
-        {
-            Span::current()
-                .record("task_id", data.task_id.as_ref())
-                .record("phone_number", "[REDACTED]")
-                .set_status(Status::Ok);
-        }
-
-        Ok(data)
+        response.into_result().map_err(HeroSmsError::Service)
     }
 
     /// Get SMS code for an activation.
@@ -258,10 +278,35 @@ impl HeroSms {
             name = "get_sms_code",
             target = "sms.hero.client",
             skip_all,
-            fields(task_id = %task_id)
+            fields(
+                task_id = %task_id,
+                sms_code = tracing::field::Empty,
+            )
         )
     )]
     pub async fn get_sms_code(&self, task_id: &TaskId) -> Result<GetSmsResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.get_sms_code_inner(task_id).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                if let Some(sms) = &data.sms
+                    && !sms.code.is_empty()
+                {
+                    Span::current().record("sms_code", crate::utils::REDACTED);
+                    set_span_ok();
+                }
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn get_sms_code_inner(&self, task_id: &TaskId) -> Result<GetSmsResponse> {
         let url = self.build_request_url("getStatusV2", vec![("id", task_id.to_string())])?;
 
         let text = self.send_request(url).await?;
@@ -269,18 +314,7 @@ impl HeroSms {
         let response = HeroSmsResponse::<GetSmsResponse>::from_text(&text)
             .map_err(HeroSmsError::DeserializeJson)?;
 
-        let data = response.into_result().map_err(HeroSmsError::Service)?;
-
-        #[cfg(feature = "tracing")]
-        if let Some(sms) = &data.sms
-            && !sms.code.is_empty()
-        {
-            Span::current()
-                .record("sms_code", "[REDACTED]")
-                .set_status(Status::Ok);
-        }
-
-        Ok(data)
+        response.into_result().map_err(HeroSmsError::Service)
     }
 
     /// Set activation status.
@@ -290,10 +324,36 @@ impl HeroSms {
             name = "set_activation_status",
             target = "sms.hero.client",
             skip_all,
-            fields(task_id = %task_id, status = %status)
+            fields(
+                task_id = %task_id,
+                status = %status,
+                response = tracing::field::Empty,
+            )
         )
     )]
     pub async fn set_activation_status(
+        &self,
+        task_id: &TaskId,
+        status: ActivationStatus,
+    ) -> Result<SetStatusResponse> {
+        #[cfg(feature = "tracing")]
+        Span::current().set_attribute("otel.kind", "client");
+
+        let result = self.set_activation_status_inner(task_id, status).await;
+
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(data) => {
+                Span::current().record("response", data.to_string());
+                set_span_ok();
+            }
+            Err(e) => set_span_error(e),
+        }
+
+        result
+    }
+
+    async fn set_activation_status_inner(
         &self,
         task_id: &TaskId,
         status: ActivationStatus,
@@ -311,17 +371,8 @@ impl HeroSms {
         let response = HeroSmsTextResponse::from_text(&text);
         let raw = response.into_result().map_err(HeroSmsError::Service)?;
 
-        let result = SetStatusResponse::from_raw(&raw)
-            .ok_or_else(|| HeroSmsError::FailedToParseSetStatusResponse { raw: raw.clone() })?;
-
-        #[cfg(feature = "tracing")]
-        {
-            Span::current()
-                .record("response", result.to_string())
-                .set_status(Status::Ok);
-        }
-
-        Ok(result)
+        SetStatusResponse::from_raw(&raw)
+            .ok_or_else(|| HeroSmsError::FailedToParseSetStatusResponse { raw: raw.clone() })
     }
 }
 

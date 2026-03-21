@@ -35,23 +35,23 @@ impl ServiceMetrics {
             let meter = global::meter("sms_solvers");
             Self {
                 numbers_requested: meter
-                    .u64_counter("sms_solvers.numbers_requested")
+                    .u64_counter("sms_solvers.numbers_requested_total")
                     .with_description("Number of phone number requests")
                     .build(),
                 sms_codes_received: meter
-                    .u64_counter("sms_solvers.sms_codes_received")
+                    .u64_counter("sms_solvers.sms_codes_received_total")
                     .with_description("Number of SMS codes successfully received")
                     .build(),
                 timeouts: meter
-                    .u64_counter("sms_solvers.timeouts")
+                    .u64_counter("sms_solvers.timeouts_total")
                     .with_description("Number of SMS wait timeouts")
                     .build(),
                 cancellations: meter
-                    .u64_counter("sms_solvers.cancellations")
+                    .u64_counter("sms_solvers.cancellations_total")
                     .with_description("Number of cancelled operations")
                     .build(),
                 errors: meter
-                    .u64_counter("sms_solvers.errors")
+                    .u64_counter("sms_solvers.errors_total")
                     .with_description("Number of errors")
                     .build(),
                 sms_wait_time: meter
@@ -59,8 +59,8 @@ impl ServiceMetrics {
                     .with_description("Time spent waiting for SMS codes")
                     .build(),
                 poll_counts: meter
-                    .u64_histogram("sms_solvers.poll_counts")
-                    .with_description("Number of polls before receiving SMS")
+                    .u64_histogram("sms_solvers.polls_per_activation")
+                    .with_description("Number of polls per activation before result")
                     .build(),
             }
         })

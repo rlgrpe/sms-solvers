@@ -12,6 +12,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "tracing")]
+use crate::utils::span_status::{set_span_error, set_span_ok};
+#[cfg(feature = "tracing")]
 use tracing::debug;
 
 /// Callback type for retry notifications.
@@ -183,6 +185,14 @@ where
             );
         })
         .await
+        .inspect(|_| {
+            #[cfg(feature = "tracing")]
+            set_span_ok();
+        })
+        .inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            set_span_error(e);
+        })
     }
 
     #[cfg_attr(
@@ -221,6 +231,10 @@ where
             );
         })
         .await
+        .inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            set_span_error(e);
+        })
     }
 
     async fn finish_activation(&self, task_id: &TaskId) -> Result<(), Self::Error> {
