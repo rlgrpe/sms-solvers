@@ -21,8 +21,11 @@ cargo test --all-features
 # Run specific test
 cargo test test_name --all-features
 
-# Run integration tests (requires API key)
+# Run Hero SMS integration tests (requires API key, consumes credits)
 HERO_SMS_API_KEY=your_key cargo test --test hero_sms_api -- --ignored
+
+# Run SMS.online integration tests (requires API key, consumes credits)
+SMS_ONLINE_API_KEY=your_key cargo test --test sms_online_api -- --ignored
 ```
 
 ## Lint Commands
@@ -58,27 +61,55 @@ src/
 ├── lib.rs              # Library entry point, re-exports
 ├── errors.rs           # Error types, RetryableError trait
 ├── types.rs            # Core types: TaskId, FullNumber, SmsCode, etc.
+├── utils/
+│   ├── mod.rs          # Utility re-exports
+│   ├── retry.rs        # RetryConfig for backoff parameters
+│   ├── error_chain.rs  # Error chain formatting helper
+│   └── span_status.rs  # OpenTelemetry span status helper
 ├── providers/
-│   ├── mod.rs          # Provider trait definition
-│   ├── traits.rs       # Provider trait and related types
-│   ├── retryable/      # Retry wrapper for providers
-│   └── hero_sms/       # Hero SMS provider implementation
+│   ├── mod.rs          # Provider module root, re-exports
+│   ├── traits.rs       # Provider trait definition
+│   ├── capabilities.rs # ProviderCapabilities trait
+│   ├── common/
+│   │   ├── countries.rs # Shared country mapping utilities
+│   │   └── services.rs  # Shared Service enum
+│   ├── retryable/
+│   │   └── mod.rs      # SmsRetryableProvider decorator
+│   ├── hero_sms/
+│   │   ├── mod.rs
+│   │   ├── client.rs   # HTTP client
+│   │   ├── provider.rs # Provider trait implementation
+│   │   ├── countries.rs # Country code mapping
+│   │   ├── errors.rs   # Error parsing and classification
+│   │   ├── services.rs # Re-exports shared Service
+│   │   ├── types.rs    # Request/response types
+│   │   └── response.rs # Response parsing helpers
+│   └── sms_online/
 │       ├── mod.rs
 │       ├── client.rs   # HTTP client
+│       ├── provider.rs # Provider trait implementation
 │       ├── countries.rs # Country code mapping
-│       ├── errors.rs   # Error parsing
-│       └── services.rs # Service enum
+│       ├── errors.rs   # Error parsing and classification
+│       ├── services.rs # Re-exports shared Service
+│       ├── types.rs    # Request/response types
+│       └── response.rs # Response parsing helpers
 └── service/
     ├── mod.rs
-    ├── structure.rs    # SmsSolverService implementation
-    └── config.rs       # Configuration and presets
+    ├── core.rs         # SmsSolverService implementation
+    ├── activation.rs   # ActivationHandle lifecycle object
+    ├── builder.rs      # SmsSolverServiceBuilder
+    ├── config.rs       # Configuration and presets
+    ├── error.rs        # SmsSolverServiceError
+    ├── traits.rs       # SmsSolverServiceTrait
+    └── telemetry.rs    # OpenTelemetry metrics (behind `metrics` feature)
 ```
 
 ## Feature Flags
 
 - `hero-sms` (default): Hero SMS provider
+- `sms-online` (default): SMS.online provider
 - `tracing` (default): OpenTelemetry tracing
 - `metrics`: OpenTelemetry metrics
-- `random`: Random number generation
+- `random` (default): Random dial code selection
 - `native-tls` (default): Native TLS backend
 - `rustls-tls`: Rustls TLS backend
