@@ -154,7 +154,6 @@ impl SmsOnline {
         service: Service,
         options: Option<&GetNumberOptions>,
     ) -> Result<GetPhoneNumberResponse> {
-
         let result = self.get_phone_number_inner(country, service, options).await;
 
         #[cfg(feature = "tracing")]
@@ -231,7 +230,6 @@ impl SmsOnline {
         )
     )]
     pub async fn get_sms_code(&self, task_id: &TaskId) -> Result<GetSmsStatusResponse> {
-
         let result = self.get_sms_code_inner(task_id).await;
 
         #[cfg(feature = "tracing")]
@@ -279,7 +277,6 @@ impl SmsOnline {
         task_id: &TaskId,
         status: ActivationStatus,
     ) -> Result<SetStatusResponse> {
-
         let result = self.set_activation_status_inner(task_id, status).await;
 
         #[cfg(feature = "tracing")]
