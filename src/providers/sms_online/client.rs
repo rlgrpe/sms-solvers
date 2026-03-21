@@ -18,8 +18,6 @@ use url::Url;
 use crate::utils::span_status::{set_span_error, set_span_ok};
 #[cfg(feature = "tracing")]
 use tracing::Span;
-#[cfg(feature = "tracing")]
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Default SMS.online API URL.
 pub const DEFAULT_API_URL: &str = "https://api.sms.online/stubs/handler_api.php";
@@ -142,6 +140,7 @@ impl SmsOnline {
             target = "sms.online.client",
             skip_all,
             fields(
+                otel.kind = "client",
                 service = %service.code(),
                 country = %country.iso_short_name(),
                 task_id = tracing::field::Empty,
@@ -155,8 +154,6 @@ impl SmsOnline {
         service: Service,
         options: Option<&GetNumberOptions>,
     ) -> Result<GetPhoneNumberResponse> {
-        #[cfg(feature = "tracing")]
-        Span::current().set_attribute("otel.kind", "client");
 
         let result = self.get_phone_number_inner(country, service, options).await;
 
@@ -227,14 +224,13 @@ impl SmsOnline {
             target = "sms.online.client",
             skip_all,
             fields(
+                otel.kind = "client",
                 task_id = %task_id,
                 sms_code = tracing::field::Empty,
             )
         )
     )]
     pub async fn get_sms_code(&self, task_id: &TaskId) -> Result<GetSmsStatusResponse> {
-        #[cfg(feature = "tracing")]
-        Span::current().set_attribute("otel.kind", "client");
 
         let result = self.get_sms_code_inner(task_id).await;
 
@@ -271,6 +267,7 @@ impl SmsOnline {
             target = "sms.online.client",
             skip_all,
             fields(
+                otel.kind = "client",
                 task_id = %task_id,
                 status = %status,
                 response = tracing::field::Empty,
@@ -282,8 +279,6 @@ impl SmsOnline {
         task_id: &TaskId,
         status: ActivationStatus,
     ) -> Result<SetStatusResponse> {
-        #[cfg(feature = "tracing")]
-        Span::current().set_attribute("otel.kind", "client");
 
         let result = self.set_activation_status_inner(task_id, status).await;
 
