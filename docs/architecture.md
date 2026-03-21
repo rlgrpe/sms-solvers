@@ -237,3 +237,5 @@ See [`docs/adding-provider.md`](adding-provider.md).
 | `tracing` | yes | OpenTelemetry tracing spans |
 | `metrics` | no | OpenTelemetry counters/histograms |
 | `random` | yes | Random dial code selection |
+| `native-tls` | yes | Native TLS backend |
+| `rustls-tls` | no | Rustls TLS backend (alternative) |
