@@ -178,6 +178,8 @@ impl Provider for HeroSmsProvider {
             return Ok(Some(SmsCode::new(&sms.code)));
         }
 
+        #[cfg(feature = "tracing")]
+        set_span_ok();
         Ok(None)
     }
 

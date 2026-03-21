@@ -297,8 +297,8 @@ impl HeroSms {
                     && !sms.code.is_empty()
                 {
                     Span::current().record("sms_code", crate::utils::REDACTED);
-                    set_span_ok();
                 }
+                set_span_ok();
             }
             Err(e) => set_span_error(e),
         }

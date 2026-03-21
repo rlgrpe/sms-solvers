@@ -231,6 +231,10 @@ where
             );
         })
         .await
+        .inspect(|_| {
+            #[cfg(feature = "tracing")]
+            set_span_ok();
+        })
         .inspect_err(|e| {
             #[cfg(feature = "tracing")]
             set_span_error(e);

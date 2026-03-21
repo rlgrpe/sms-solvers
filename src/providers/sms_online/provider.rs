@@ -142,7 +142,11 @@ impl Provider for SmsOnlineProvider {
         })?;
 
         match response {
-            GetSmsStatusResponse::WaitCode | GetSmsStatusResponse::WaitResend => Ok(None),
+            GetSmsStatusResponse::WaitCode | GetSmsStatusResponse::WaitResend => {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+                Ok(None)
+            }
             GetSmsStatusResponse::Ok { code } => {
                 #[cfg(feature = "tracing")]
                 set_span_ok();

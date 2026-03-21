@@ -328,6 +328,14 @@ where
     async fn wait_for_sms_code(&self, task_id: &TaskId) -> Result<SmsCode, Self::Error> {
         self.wait_for_sms_code_cancellable(task_id, CancellationToken::new())
             .await
+            .inspect(|_| {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })
     }
 
     #[cfg_attr(

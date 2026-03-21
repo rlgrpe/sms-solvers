@@ -243,8 +243,8 @@ impl SmsOnline {
             Ok(data) => {
                 if matches!(data, GetSmsStatusResponse::Ok { .. }) {
                     Span::current().record("sms_code", crate::utils::REDACTED);
-                    set_span_ok();
                 }
+                set_span_ok();
             }
             Err(e) => set_span_error(e),
         }
