@@ -9,6 +9,7 @@ use backon::Retryable;
 use keshvar::Country;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 #[cfg(feature = "tracing")]
@@ -162,6 +163,8 @@ where
         let inner = Arc::clone(&self.inner);
         let on_retry = self.on_retry.clone();
         let country_name = country.iso_short_name().to_string();
+        let max_retries = self.retry_config.max_retries;
+        let attempt = Arc::new(AtomicU32::new(0));
         (|| {
             let inner = Arc::clone(&inner);
             let svc = service.clone();
@@ -171,7 +174,8 @@ where
         .retry(self.retry_config.build_strategy())
         .when(|err: &Self::Error| err.is_retryable())
         .notify(move |err, duration| {
-            // Call user callback if set
+            let attempt_num = attempt.fetch_add(1, Ordering::Relaxed) + 1;
+
             if let Some(ref callback) = on_retry {
                 callback(err, duration);
             }
@@ -180,6 +184,8 @@ where
             debug!(
                 error = ?err,
                 country = %country_name,
+                attempt = attempt_num,
+                max_retries = max_retries,
                 retry_after_secs = %duration.as_secs_f64(),
                 "Retrying get_phone_number"
             );
@@ -209,6 +215,8 @@ where
         let task_id_owned = task_id.clone();
         let task_id_for_notify = task_id.clone();
         let on_retry = self.on_retry.clone();
+        let max_retries = self.retry_config.max_retries;
+        let attempt = Arc::new(AtomicU32::new(0));
         (|| {
             let inner = Arc::clone(&inner);
             let task_id = task_id_owned.clone();
@@ -217,7 +225,8 @@ where
         .retry(self.retry_config.build_strategy())
         .when(|err: &Self::Error| err.is_retryable())
         .notify(move |err, duration| {
-            // Call user callback if set
+            let attempt_num = attempt.fetch_add(1, Ordering::Relaxed) + 1;
+
             if let Some(ref callback) = on_retry {
                 callback(err, duration);
             }
@@ -226,6 +235,8 @@ where
             debug!(
                 error = ?err,
                 task_id = %task_id_for_notify,
+                attempt = attempt_num,
+                max_retries = max_retries,
                 retry_after_secs = %duration.as_secs_f64(),
                 "Retrying get_sms_code"
             );
