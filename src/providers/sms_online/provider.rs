@@ -11,7 +11,9 @@ use keshvar::Country;
 use std::collections::HashSet;
 
 #[cfg(feature = "tracing")]
-use tracing::{debug, warn};
+use crate::utils::span_status::{set_span_error, set_span_ok};
+#[cfg(feature = "tracing")]
+use tracing::warn;
 
 /// SMS.online provider implementation.
 ///
@@ -83,7 +85,8 @@ impl Provider for SmsOnlineProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnlineProvider::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.online",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -93,22 +96,28 @@ impl Provider for SmsOnlineProvider {
         country: Country,
         service: Self::Service,
     ) -> Result<(TaskId, FullNumber, Option<DialCode>)> {
-        // SMS.online API doesn't return dial code separately, derive from requested country
         let dial_code = DialCode::from(&country);
 
         let response = self
             .client
             .get_phone_number(country, service, self.options.as_ref())
-            .await?;
+            .await
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })?;
 
         #[cfg(feature = "tracing")]
         if !response.phone_number.starts_with(dial_code.as_str()) {
             warn!(
                 expected_prefix = dial_code.as_str(),
-                phone_number = "[REDACTED]",
+                phone_number = crate::utils::REDACTED,
                 "Phone number doesn't start with expected dial code"
             );
         }
+
+        #[cfg(feature = "tracing")]
+        set_span_ok();
 
         Ok((
             response.task_id,
@@ -120,43 +129,86 @@ impl Provider for SmsOnlineProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "SmsOnlineProvider::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.online",
             skip_all,
             fields(task_id = %task_id)
         )
     )]
     async fn get_sms_code(&self, task_id: &TaskId) -> Result<Option<SmsCode>> {
-        let response = self.client.get_sms_code(task_id).await?;
+        let response = self.client.get_sms_code(task_id).await.inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            set_span_error(e);
+        })?;
 
         match response {
-            GetSmsStatusResponse::WaitCode | GetSmsStatusResponse::WaitResend => Ok(None),
-            GetSmsStatusResponse::Ok { code } => Ok(Some(SmsCode::new(&code))),
-            GetSmsStatusResponse::Cancel => Err(SmsOnlineError::ActivationCanceled {
-                task_id: task_id.clone(),
-            }),
+            GetSmsStatusResponse::WaitCode | GetSmsStatusResponse::WaitResend => {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+                Ok(None)
+            }
+            GetSmsStatusResponse::Ok { code } => {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+                Ok(Some(SmsCode::new(&code)))
+            }
+            GetSmsStatusResponse::Cancel => {
+                let err = SmsOnlineError::ActivationCanceled {
+                    task_id: task_id.clone(),
+                };
+                #[cfg(feature = "tracing")]
+                set_span_error(&err);
+                Err(err)
+            }
         }
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "finish_activation",
+            target = "sms.online",
+            skip_all,
+            fields(task_id = %task_id)
+        )
+    )]
     async fn finish_activation(&self, task_id: &TaskId) -> Result<()> {
         self.client
             .set_activation_status(task_id, ActivationStatus::FinishActivation)
-            .await?;
-
-        #[cfg(feature = "tracing")]
-        debug!(task_id = %task_id, "Activation finished successfully");
-
-        Ok(())
+            .await
+            .map(|_| ())
+            .inspect(|_| {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "cancel_activation",
+            target = "sms.online",
+            skip_all,
+            fields(task_id = %task_id)
+        )
+    )]
     async fn cancel_activation(&self, task_id: &TaskId) -> Result<()> {
         self.client
             .set_activation_status(task_id, ActivationStatus::CancelUsedNumber)
-            .await?;
-
-        #[cfg(feature = "tracing")]
-        debug!(task_id = %task_id, "Activation cancelled");
-
-        Ok(())
+            .await
+            .map(|_| ())
+            .inspect(|_| {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })
     }
 
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {

@@ -11,7 +11,9 @@ use keshvar::Country;
 use std::collections::HashSet;
 
 #[cfg(feature = "tracing")]
-use tracing::{debug, warn};
+use crate::utils::span_status::{set_span_error, set_span_ok};
+#[cfg(feature = "tracing")]
+use tracing::warn;
 
 /// Hero SMS provider implementation.
 ///
@@ -106,7 +108,8 @@ impl Provider for HeroSmsProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSmsProvider::get_phone_number",
+            name = "get_phone_number",
+            target = "sms.hero",
             skip_all,
             fields(service = %service.code(), country = %country.iso_short_name())
         )
@@ -119,7 +122,11 @@ impl Provider for HeroSmsProvider {
         let response = self
             .client
             .get_phone_number(country, service, self.options.as_ref())
-            .await?;
+            .await
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })?;
 
         let api_dial_code = if response.country_phone_code > 0 {
             match DialCode::new(response.country_phone_code.to_string()) {
@@ -138,6 +145,9 @@ impl Provider for HeroSmsProvider {
             None
         };
 
+        #[cfg(feature = "tracing")]
+        set_span_ok();
+
         Ok((
             response.task_id,
             FullNumber::from(response.phone_number),
@@ -148,43 +158,77 @@ impl Provider for HeroSmsProvider {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            name = "HeroSmsProvider::get_sms_code",
+            name = "get_sms_code",
+            target = "sms.hero",
             skip_all,
             fields(task_id = %task_id)
         )
     )]
     async fn get_sms_code(&self, task_id: &TaskId) -> Result<Option<SmsCode>> {
-        let response = self.client.get_sms_code(task_id).await?;
+        let response = self.client.get_sms_code(task_id).await.inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            set_span_error(e);
+        })?;
 
         if let Some(sms) = &response.sms
             && !sms.code.is_empty()
         {
+            #[cfg(feature = "tracing")]
+            set_span_ok();
             return Ok(Some(SmsCode::new(&sms.code)));
         }
 
+        #[cfg(feature = "tracing")]
+        set_span_ok();
         Ok(None)
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "finish_activation",
+            target = "sms.hero",
+            skip_all,
+            fields(task_id = %task_id)
+        )
+    )]
     async fn finish_activation(&self, task_id: &TaskId) -> Result<()> {
         self.client
             .set_activation_status(task_id, ActivationStatus::FinishActivation)
-            .await?;
-
-        #[cfg(feature = "tracing")]
-        debug!(task_id = %task_id, "Activation finished successfully");
-
-        Ok(())
+            .await
+            .map(|_| ())
+            .inspect(|_| {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "cancel_activation",
+            target = "sms.hero",
+            skip_all,
+            fields(task_id = %task_id)
+        )
+    )]
     async fn cancel_activation(&self, task_id: &TaskId) -> Result<()> {
         self.client
             .set_activation_status(task_id, ActivationStatus::CancelUsedNumber)
-            .await?;
-
-        #[cfg(feature = "tracing")]
-        debug!(task_id = %task_id, "Activation cancelled");
-
-        Ok(())
+            .await
+            .map(|_| ())
+            .inspect(|_| {
+                #[cfg(feature = "tracing")]
+                set_span_ok();
+            })
+            .inspect_err(|e| {
+                #[cfg(feature = "tracing")]
+                set_span_error(e);
+            })
     }
 
     fn is_dial_code_supported(&self, dial_code: &DialCode) -> bool {
